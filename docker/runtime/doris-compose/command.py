@@ -79,7 +79,7 @@ class Command(object):
         group.add_argument("--fe-id", nargs="*", type=int, help="Specify up fe ids, support multiple ids, " \
                 "if specific --fe-id but not specific ids, apply to all fe.")
         group.add_argument("--be-id", nargs="*", type=int, help="Specify up be ids, support multiple ids, " \
-                "if specific --be but not specific ids, apply to all be.")
+                "if specific --be-id but not specific ids, apply to all be.")
 
     def _get_parser_bool_action(self, is_store_true):
         if sys.version_info.major == 3 and sys.version_info.minor >= 9:
