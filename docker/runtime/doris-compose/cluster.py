@@ -46,6 +46,8 @@ IP_PART4_SIZE = 200
 
 LOG = utils.get_logger()
 
+TYPE_TOOL = "tool"
+
 
 def get_cluster_path(cluster_name):
     return os.path.join(LOCAL_DORIS_PATH, cluster_name)
@@ -308,12 +310,37 @@ class BE(Node):
         return super().expose_sub_dirs() + ["storage"]
 
 
+class Tool(object):
+
+    def __init__(self, cluster_name, name, image):
+        self.cluster_name = cluster_name
+        self.name = name
+        self.image = image
+
+    def service_name(self):
+        return utils.with_doris_prefix("{}-{}-{}".format(
+            self.cluster_name, self.node_type(), self.name))
+
+    def node_type(self):
+        return TYPE_TOOL
+
+    def compose(self):
+        return {
+            "container_name": self.service_name(),
+            "image": self.image,
+            #"networks": {
+            #    utils.with_doris_prefix(self.cluster_name): {}
+            #},
+        }
+
+
 class Cluster(object):
 
     def __init__(self, name, subnet, image):
         self.name = name
         self.subnet = subnet
         self.image = image
+        self.tools = {}
         self.groups = {
             node_type: Group(node_type)
             for node_type in Node.TYPE_ALL
@@ -402,6 +429,17 @@ class Cluster(object):
         group = self.get_group(node_type)
         group.remove(id)
 
+    def add_tool(self, tool, image):
+        node = Tool(self.name, tool, image)
+        self.tools[tool] = node
+        return node
+
+    def get_tool(self, tool):
+        node = self.tools.get(tool, None)
+        if not node:
+            raise Exception("No tool with name {}".format(tool))
+        return node
+
     def save(self):
         self._save_meta()
         self._save_compose()
@@ -415,6 +453,8 @@ class Cluster(object):
         for node_type in self.groups.keys():
             for node in self.get_all_nodes(node_type):
                 services[node.service_name()] = node.compose()
+        for tool in self.tools.values():
+            services[tool.service_name()] = tool.compose()
 
         compose = {
             "version": "3",

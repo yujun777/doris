@@ -82,6 +82,12 @@ def parse_service_name(service_name):
     import cluster
     if not service_name or not service_name.startswith(DORIS_PREFIX):
         return None, None, None
+    tool_tag = "-{}-".format(cluster.TYPE_TOOL)
+    pos = service_name.find(tool_tag)
+    if pos > 0:
+        return service_name[len(
+            DORIS_PREFIX):pos], cluster.TYPE_TOOL, service_name[pos +
+                                                                len(tool_tag):]
     pos2 = service_name.rfind("-")
     if pos2 < 0:
         return None, None, None

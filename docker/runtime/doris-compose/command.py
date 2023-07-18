@@ -96,8 +96,10 @@ class SimpleCommand(Command):
         self.help = help
 
     def add_parser(self, args_parsers):
-        help = self.help + " If none of --fe-id, --be-id is specific, then apply to all containers."
-        parser = args_parsers.add_parser(self.command, help=help)
+        description = self.help + "\nIf none of --fe-id, --be-id is specific, then apply to all containers."
+        parser = args_parsers.add_parser(self.command,
+                                         help=self.help,
+                                         description=description)
         parser.add_argument("NAME", help="Specify cluster name.")
         self._add_parser_ids_args(parser)
 
@@ -117,8 +119,8 @@ class SimpleCommand(Command):
 class UpCommand(Command):
 
     def add_parser(self, args_parsers):
-        parser = args_parsers.add_parser("up", help="Create and upgrade doris containers, "\
-                "or add new containers. " \
+        help = "Create and upgrade doris containers. or add new containers. "
+        parser = args_parsers.add_parser("up", help=help, description= help + "\n" +
                 "If none of --add-fe-num, --add-be-num, --fe-id, --be-id is specific, " \
                 "then apply to all containers.")
         parser.add_argument("NAME", default="", help="Specific cluster name.")
@@ -227,8 +229,9 @@ class UpCommand(Command):
 class DownCommand(Command):
 
     def add_parser(self, args_parsers):
-        parser = args_parsers.add_parser("down",
-                                     help="Down doris containers, networks. "\
+        help = "Down doris containers, networks. "
+        parser = args_parsers.add_parser("down", help=help,
+                                     description = help + "\n" +
                                            "It will also remove node from DB. " \
                                            "If none of --fe-id, --be-id is specific, "\
                                            "then apply to all containers.")
@@ -347,6 +350,45 @@ class ListNode(object):
                 self.err_msg = be.err_msg
 
 
+class ToolCommand(Command):
+
+    def add_parser(self, args_parsers):
+        parser = args_parsers.add_parser(
+            "tool", help="Add, remove, run tool containers.")
+        parser.add_argument("NAME", help="Specify cluster name.")
+        parser.add_argument("OP",
+                            choices=("add", "remove", "run"),
+                            help="Specify tool op.")
+        parser.add_argument("TOOL", help="Specify tool name.")
+        parser.add_argument("--image",
+                            default=None,
+                            help="Add tool need specific docker image.")
+        parser.add_argument("--cmd",
+                            default=None,
+                            help="Run tool need specific cmd.")
+
+    def run(self, args):
+        cluster = CLUSTER.Cluster.load(args.NAME)
+        if not args.TOOL:
+            raise Exception("Must specific tool name.")
+        if args.OP == "add":
+            if not args.image:
+                raise Exception("Add tool must specific image.")
+            node = cluster.add_tool(args.TOOL, args.image)
+            cluster.save()
+            utils.exec_docker_compose_command(cluster.get_compose_file(), "up",
+                                              ["--no-start"], [node])
+        elif args.OP == "run":
+            if not args.cmd:
+                raise Exception("Run tool must specific cmd.")
+            node = cluster.get_tool(args.TOOL)
+            utils.exec_docker_compose_command(cluster.get_compose_file(),
+                                              "run", ["--rm"], [node],
+                                              args.cmd)
+        else:
+            raise Exception("Not support tool op {}.".format(args.OP))
+
+
 class ListCommand(Command):
 
     def add_parser(self, args_parsers):
@@ -379,6 +421,12 @@ class ListCommand(Command):
                 self.ip = ip
                 self.image = image
 
+        def get_network_from_compose_service(service_conf):
+            networks = service_conf.get("networks", None)
+            if not networks:
+                return ""
+            return list(networks.values())[0]["ipv4_address"]
+
         def parse_cluster_compose_file(cluster_name):
             compose_file = CLUSTER.get_compose_file(cluster_name)
             if not os.path.exists(compose_file):
@@ -394,11 +442,12 @@ class ListCommand(Command):
                     service:
                     ComposeService(
                         service,
-                        list(service_conf["networks"].values())[0]
-                        ["ipv4_address"], service_conf["image"])
+                        get_network_from_compose_service(service_conf),
+                        service_conf["image"])
                     for service, service_conf in services.items()
                 }
-            except:
+            except Exception as e:
+                LOG.exception(e)
                 return COMPOSE_BAD, {}
 
         clusters = {}
@@ -433,7 +482,11 @@ class ListCommand(Command):
             for name in sorted(clusters.keys()):
                 cluster_info = clusters[name]
                 service_statuses = {}
+                tool_prefix = utils.with_doris_prefix("{}-{}-".format(
+                    name, CLUSTER.TYPE_TOOL))
                 for _, container in cluster_info["services"].items():
+                    if container.name.startswith(tool_prefix):
+                        continue
                     status = SERVICE_DEAD if type(
                         container) == TYPE_COMPOSESERVICE else container.status
                     service_statuses[status] = service_statuses.get(status,
@@ -467,6 +520,7 @@ class ListCommand(Command):
             nodes = []
             for service_name, container in services.items():
                 _, node_type, id = utils.parse_service_name(container.name)
+                print(container.name, node_type, id)
                 node = ListNode()
                 node.cluster_name = cluster_name
                 node.node_type = node_type
@@ -515,8 +569,13 @@ class ListCommand(Command):
                 node.update_db_info(db_mgr)
                 nodes.append(node)
 
-            def get_key(node):
-                key = node.id
+            ids = sorted([str(node.id) for node in nodes])
+
+            def sort_key(node):
+                if type(node.id) == type(0):
+                    key = node.id
+                else:
+                    key = ids.index(node.id)
                 if node.node_type == CLUSTER.Node.TYPE_FE:
                     key += 0 * CLUSTER.ID_LIMIT
                 elif node.node_type == CLUSTER.Node.TYPE_BE:
@@ -525,7 +584,7 @@ class ListCommand(Command):
                     key += 2 * CLUSTER.ID_LIMIT
                 return key
 
-            for node in sorted(nodes, key=get_key):
+            for node in sorted(nodes, key=sort_key):
                 table.add_row(node.info())
 
         print(table)
@@ -539,5 +598,6 @@ ALL_COMMANDS = [
     SimpleCommand("restart", "Restart the doris containers. "),
     SimpleCommand("pause", "Pause the doris containers. "),
     SimpleCommand("unpause", "Unpause the doris containers. "),
+    ToolCommand("tool"),
     ListCommand("ls"),
 ]
