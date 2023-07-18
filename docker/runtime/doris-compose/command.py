@@ -338,9 +338,11 @@ class ListNode(object):
             if fe:
                 self.alive = str(fe.alive).lower()
                 self.is_master = str(fe.is_master).lower()
-                self.query_port = fe.query_port
+                self.query_port = "{} ({})".format(CLUSTER.FE_QUERY_PORT, fe.query_port)
                 self.last_heartbeat = fe.last_heartbeat
                 self.err_msg = fe.err_msg
+            else:
+                self.query_port = CLUSTER.FE_QUERY_PORT
         elif self.node_type == CLUSTER.Node.TYPE_BE:
             be = db_mgr.get_be(self.id)
             if be:
@@ -520,7 +522,6 @@ class ListCommand(Command):
             nodes = []
             for service_name, container in services.items():
                 _, node_type, id = utils.parse_service_name(container.name)
-                print(container.name, node_type, id)
                 node = ListNode()
                 node.cluster_name = cluster_name
                 node.node_type = node_type
