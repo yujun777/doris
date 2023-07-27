@@ -27,9 +27,11 @@ import org.apache.doris.thrift.TStorageMedium;
 
 import com.google.common.collect.Lists;
 import com.google.common.collect.Maps;
+import com.google.common.collect.Sets;
 
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 
 /*
@@ -49,14 +51,18 @@ public abstract class Rebalancer {
     // When Rebalancer init, the statisticMap is usually empty. So it's no need to be an arg.
     // Only use updateLoadStatistic() to load stats.
     protected Map<Tag, LoadStatisticForTag> statisticMap = Maps.newHashMap();
+    protected Set<Long> healthTablets = Sets.newHashSet();
+    protected Map<Long, PathSlot> backendsWorkingSlots;
     protected TabletInvertedIndex invertedIndex;
     protected SystemInfoService infoService;
     // be id -> end time of prio
     protected Map<Long, Long> prioBackends = Maps.newConcurrentMap();
 
-    public Rebalancer(SystemInfoService infoService, TabletInvertedIndex invertedIndex) {
+    public Rebalancer(SystemInfoService infoService, TabletInvertedIndex invertedIndex,
+            Map<Long, PathSlot> backendsWorkingSlots) {
         this.infoService = infoService;
         this.invertedIndex = invertedIndex;
+        this.backendsWorkingSlots = backendsWorkingSlots;
     }
 
     public List<TabletSchedCtx> selectAlternativeTablets() {
@@ -74,9 +80,9 @@ public abstract class Rebalancer {
     protected abstract List<TabletSchedCtx> selectAlternativeTabletsForCluster(
             LoadStatisticForTag clusterStat, TStorageMedium medium);
 
-    public AgentTask createBalanceTask(TabletSchedCtx tabletCtx, Map<Long, PathSlot> backendsWorkingSlots)
+    public AgentTask createBalanceTask(TabletSchedCtx tabletCtx)
             throws SchedException {
-        completeSchedCtx(tabletCtx, backendsWorkingSlots);
+        completeSchedCtx(tabletCtx);
         if (tabletCtx.getBalanceType() == TabletSchedCtx.BalanceType.BE_BALANCE) {
             return tabletCtx.createCloneReplicaAndTask();
         } else {
@@ -90,7 +96,7 @@ public abstract class Rebalancer {
     // You should check the moves' validation.
     // 2. If you want to generate {srcReplica, destBe} here, just do it.
     // 3. You should check the path slots of src & dest.
-    protected abstract void completeSchedCtx(TabletSchedCtx tabletCtx, Map<Long, PathSlot> backendsWorkingSlots)
+    protected abstract void completeSchedCtx(TabletSchedCtx tabletCtx)
             throws SchedException;
 
     public Long getToDeleteReplicaId(TabletSchedCtx tabletCtx) {
@@ -99,6 +105,10 @@ public abstract class Rebalancer {
 
     public void updateLoadStatistic(Map<Tag, LoadStatisticForTag> statisticMap) {
         this.statisticMap = statisticMap;
+    }
+
+    public void setHealthTablets(Set<Long> healthTablets) {
+        this.healthTablets = healthTablets;
     }
 
     public void addPrioBackends(List<Backend> backends, long timeoutS) {

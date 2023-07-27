@@ -239,6 +239,8 @@ public class TabletChecker extends MasterDaemon {
             copiedPrios = HashBasedTable.create(prios);
         }
 
+        Set<Long> healthTablets = Sets.newHashSet();
+
         OUT:
         for (long dbId : copiedPrios.rowKeySet()) {
             Database db = env.getInternalCatalog().getDbNullable(dbId);
@@ -259,7 +261,7 @@ public class TabletChecker extends MasterDaemon {
                     }
                     for (Partition partition : tbl.getAllPartitions()) {
                         LoopControlStatus st = handlePartitionTablet(db, tbl, partition, true, aliveBeIds, start,
-                                counter);
+                                counter, healthTablets);
                         if (st == LoopControlStatus.BREAK_OUT) {
                             break OUT;
                         } else {
@@ -303,7 +305,7 @@ public class TabletChecker extends MasterDaemon {
                         }
 
                         LoopControlStatus st = handlePartitionTablet(db, tbl, partition, false, aliveBeIds, start,
-                                counter);
+                                counter, healthTablets);
                         if (st == LoopControlStatus.BREAK_OUT) {
                             break OUT;
                         } else {
@@ -315,6 +317,8 @@ public class TabletChecker extends MasterDaemon {
                 }
             } // tables
         } // end for dbs
+
+        tabletScheduler.setHealthTablets(healthTablets);
 
         long cost = System.currentTimeMillis() - start;
         stat.counterTabletCheckCostMs.addAndGet(cost);
@@ -334,7 +338,7 @@ public class TabletChecker extends MasterDaemon {
     }
 
     private LoopControlStatus handlePartitionTablet(Database db, OlapTable tbl, Partition partition, boolean isInPrios,
-            List<Long> aliveBeIds, long startTime, CheckerCounter counter) {
+            List<Long> aliveBeIds, long startTime, CheckerCounter counter, Set<Long> healthTablets) {
         if (partition.getState() != PartitionState.NORMAL) {
             // when alter job is in FINISHING state, partition state will be set to NORMAL,
             // and we can schedule the tablets in it.
@@ -360,6 +364,7 @@ public class TabletChecker extends MasterDaemon {
                 if (statusWithPrio.first == TabletStatus.HEALTHY) {
                     // Only set last status check time when status is healthy.
                     tablet.setLastStatusCheckTime(startTime);
+                    healthTablets.add(tablet.getId());
                     continue;
                 } else if (statusWithPrio.first == TabletStatus.UNRECOVERABLE) {
                     // This tablet is not recoverable, do not set it into tablet scheduler

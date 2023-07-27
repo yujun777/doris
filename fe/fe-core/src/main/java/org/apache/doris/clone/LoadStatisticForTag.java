@@ -322,6 +322,10 @@ public class LoadStatisticForTag {
         return null;
     }
 
+    public List<BackendLoadStatistic> getBackendLoadStatistics() {
+        return beLoadStatistics;
+    }
+
     /*
      * If cluster is balance, all Backends will be in 'mid', and 'high' and 'low' is empty
      * If both 'high' and 'low' has Backends, just return
@@ -398,5 +402,13 @@ public class LoadStatisticForTag {
 
     public TreeMultimap<Long, TabletInvertedIndex.PartitionBalanceInfo> getSkewMap(TStorageMedium medium) {
         return skewMaps.get(medium);
+    }
+
+    public double getAvgLoadScore(TStorageMedium medium) {
+        return avgLoadScoreMap.getOrDefault(medium, 0.0);
+    }
+
+    public double getAvgUsedPercent(TStorageMedium medium) {
+        return avgUsedCapacityPercentMap.getOrDefault(medium, 0.0);
     }
 }
