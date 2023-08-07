@@ -162,13 +162,22 @@ public class DynamicPartitionUtil {
         }
     }
 
-    public static boolean checkCreateHistoryPartition(String create) throws DdlException {
+    private static boolean checkCreateHistoryPartition(String create) throws DdlException {
         if (Strings.isNullOrEmpty(create)
                 || (!Boolean.TRUE.toString().equalsIgnoreCase(create)
                 && !Boolean.FALSE.toString().equalsIgnoreCase(create))) {
             ErrorReport.reportDdlException(ErrorCode.ERROR_DYNAMIC_PARTITION_CREATE_HISTORY_PARTITION, create);
         }
         return Boolean.valueOf(create);
+    }
+
+    private static boolean checkDropHistoryPartition(String drop) throws DdlException {
+        if (Strings.isNullOrEmpty(drop)
+                || (!Boolean.TRUE.toString().equalsIgnoreCase(drop)
+                && !Boolean.FALSE.toString().equalsIgnoreCase(drop))) {
+            ErrorReport.reportDdlException(ErrorCode.ERROR_DYNAMIC_PARTITION_DROP_HISTORY_PARTITION, drop);
+        }
+        return Boolean.valueOf(drop);
     }
 
     private static void checkHistoryPartitionNum(String val) throws DdlException {
@@ -434,6 +443,7 @@ public class DynamicPartitionUtil {
         String buckets = properties.get(DynamicPartitionProperty.BUCKETS);
         String enable = properties.get(DynamicPartitionProperty.ENABLE);
         String createHistoryPartition = properties.get(DynamicPartitionProperty.CREATE_HISTORY_PARTITION);
+        String dropHistoryPartition = properties.get(DynamicPartitionProperty.DROP_HISTORY_PARTITION);
         String historyPartitionNum = properties.get(DynamicPartitionProperty.HISTORY_PARTITION_NUM);
         String reservedHistoryPeriods = properties.get(DynamicPartitionProperty.RESERVED_HISTORY_PERIODS);
 
@@ -445,6 +455,7 @@ public class DynamicPartitionUtil {
                 && Strings.isNullOrEmpty(end)
                 && Strings.isNullOrEmpty(buckets)
                 && Strings.isNullOrEmpty(createHistoryPartition)
+                && Strings.isNullOrEmpty(dropHistoryPartition)
                 && Strings.isNullOrEmpty(historyPartitionNum)
                 && Strings.isNullOrEmpty(reservedHistoryPeriods))) {
             if (Strings.isNullOrEmpty(enable)) {
@@ -472,6 +483,9 @@ public class DynamicPartitionUtil {
             }
             if (Strings.isNullOrEmpty(createHistoryPartition)) {
                 properties.put(DynamicPartitionProperty.CREATE_HISTORY_PARTITION, "false");
+            }
+            if (Strings.isNullOrEmpty(dropHistoryPartition)) {
+                properties.put(DynamicPartitionProperty.DROP_HISTORY_PARTITION, "true");
             }
             if (Strings.isNullOrEmpty(historyPartitionNum)) {
                 properties.put(DynamicPartitionProperty.HISTORY_PARTITION_NUM,
@@ -555,6 +569,13 @@ public class DynamicPartitionUtil {
             createHistoryPartition = checkCreateHistoryPartition(val);
             properties.remove(DynamicPartitionProperty.CREATE_HISTORY_PARTITION);
             analyzedProperties.put(DynamicPartitionProperty.CREATE_HISTORY_PARTITION, val);
+        }
+
+        if (properties.containsKey(DynamicPartitionProperty.DROP_HISTORY_PARTITION)) {
+            String val = properties.get(DynamicPartitionProperty.DROP_HISTORY_PARTITION);
+            checkDropHistoryPartition(val);
+            properties.remove(DynamicPartitionProperty.DROP_HISTORY_PARTITION);
+            analyzedProperties.put(DynamicPartitionProperty.DROP_HISTORY_PARTITION, val);
         }
 
         if (properties.containsKey(DynamicPartitionProperty.HISTORY_PARTITION_NUM)) {

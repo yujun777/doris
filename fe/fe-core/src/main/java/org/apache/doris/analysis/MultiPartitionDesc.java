@@ -172,6 +172,9 @@ public class MultiPartitionDesc implements AllPartitionDesc {
             if (properties.containsKey(DynamicPartitionProperty.CREATE_HISTORY_PARTITION)) {
                 properties.put(DynamicPartitionProperty.CREATE_HISTORY_PARTITION, "false");
             }
+            if (properties.containsKey(DynamicPartitionProperty.DROP_HISTORY_PARTITION)) {
+                properties.put(DynamicPartitionProperty.DROP_HISTORY_PARTITION, "true");
+            }
             if (properties.containsKey(DynamicPartitionProperty.PREFIX)) {
                 partitionPrefix = properties.get(DynamicPartitionProperty.PREFIX);
                 try {

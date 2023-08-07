@@ -44,6 +44,7 @@ public class DynamicPartitionProperty {
     public static final String REPLICATION_NUM = "dynamic_partition.replication_num";
     public static final String REPLICATION_ALLOCATION = "dynamic_partition.replication_allocation";
     public static final String CREATE_HISTORY_PARTITION = "dynamic_partition.create_history_partition";
+    public static final String DROP_HISTORY_PARTITION = "dynamic_partition.drop_history_partition";
     public static final String HISTORY_PARTITION_NUM = "dynamic_partition.history_partition_num";
     public static final String HOT_PARTITION_NUM = "dynamic_partition.hot_partition_num";
     public static final String RESERVED_HISTORY_PERIODS = "dynamic_partition.reserved_history_periods";
@@ -70,6 +71,7 @@ public class DynamicPartitionProperty {
     // if NOT_SET, it will use table's default replica allocation
     private ReplicaAllocation replicaAlloc;
     private boolean createHistoryPartition = false;
+    private boolean dropHistoryPartition = true;
     private int historyPartitionNum;
     // This property are used to describe the number of partitions that need to be reserved on the high-speed storage.
     // If not set, default is 0
@@ -91,6 +93,7 @@ public class DynamicPartitionProperty {
             this.buckets = Integer.parseInt(properties.get(BUCKETS));
             this.replicaAlloc = analyzeReplicaAllocation(properties);
             this.createHistoryPartition = Boolean.parseBoolean(properties.get(CREATE_HISTORY_PARTITION));
+            this.dropHistoryPartition = Boolean.parseBoolean(properties.getOrDefault(DROP_HISTORY_PARTITION, "true"));
             this.historyPartitionNum = Integer.parseInt(properties.getOrDefault(
                     HISTORY_PARTITION_NUM, String.valueOf(NOT_SET_HISTORY_PARTITION_NUM)));
             this.hotPartitionNum = Integer.parseInt(properties.getOrDefault(HOT_PARTITION_NUM, "0"));
@@ -169,6 +172,10 @@ public class DynamicPartitionProperty {
         return createHistoryPartition;
     }
 
+    public boolean isDropHistoryPartition() {
+        return dropHistoryPartition;
+    }
+
     public int getHistoryPartitionNum() {
         return historyPartitionNum;
     }
@@ -225,6 +232,7 @@ public class DynamicPartitionProperty {
                 + ",\n\"" + REPLICATION_ALLOCATION + "\" = \"" + tmpAlloc.toCreateStmt() + "\""
                 + ",\n\"" + BUCKETS + "\" = \"" + buckets + "\""
                 + ",\n\"" + CREATE_HISTORY_PARTITION + "\" = \"" + createHistoryPartition + "\""
+                + ",\n\"" + DROP_HISTORY_PARTITION + "\" = \"" + dropHistoryPartition + "\""
                 + ",\n\"" + HISTORY_PARTITION_NUM + "\" = \"" + historyPartitionNum + "\""
                 + ",\n\"" + HOT_PARTITION_NUM + "\" = \"" + hotPartitionNum + "\""
                 + ",\n\"" + RESERVED_HISTORY_PERIODS + "\" = \"" + reservedHistoryPeriods + "\""

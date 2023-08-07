@@ -403,7 +403,8 @@ public class DynamicPartitionScheduler extends MasterDaemon {
             Column partitionColumn, String partitionFormat) throws DdlException {
         ArrayList<DropPartitionClause> dropPartitionClauses = new ArrayList<>();
         DynamicPartitionProperty dynamicPartitionProperty = olapTable.getTableProperty().getDynamicPartitionProperty();
-        if (dynamicPartitionProperty.getStart() == DynamicPartitionProperty.MIN_START_OFFSET) {
+        if (!dynamicPartitionProperty.isDropHistoryPartition()
+                || dynamicPartitionProperty.getStart() == DynamicPartitionProperty.MIN_START_OFFSET) {
             // not set start offset, so not drop any partition
             return dropPartitionClauses;
         }
@@ -466,6 +467,7 @@ public class DynamicPartitionScheduler extends MasterDaemon {
             for (Range<PartitionKey> reserveHistoryPartitionKeyRange : reservedHistoryPartitionKeyRangeList) {
                 if (RangeUtils.checkIsTwoRangesIntersect(reserveHistoryPartitionKeyRange, checkDropPartitionKey)) {
                     isContaineds.put(checkDropPartitionId, true);
+                    break;
                 }
             }
         }
