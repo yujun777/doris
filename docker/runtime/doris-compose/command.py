@@ -24,6 +24,7 @@ import os.path
 import prettytable
 import shutil
 import sys
+import time
 
 LOG = utils.get_logger()
 
@@ -127,6 +128,19 @@ class UpCommand(Command):
                             nargs="?",
                             help="Specify docker image.")
 
+        parser.add_argument(
+            "--wait-timeout",
+            type=int,
+            default=0,
+            help=
+            "Specify wait seconds for upping: 0(default) not wait, > 0 max wait seconds, -1 wait unlimited."
+        )
+
+        parser.add_argument("--output-json",
+                            default=False,
+                            action=self._get_parser_bool_action(True),
+                            help="output as json, and don't print log")
+
         group1 = parser.add_argument_group("add new nodes",
                                            "add cluster nodes.")
         group1.add_argument(
@@ -153,6 +167,8 @@ class UpCommand(Command):
                                 "and image haven't changed. ")
 
     def run(self, args):
+        if args.output_json:
+            utils.set_enable_log(False)
         if not args.NAME:
             raise Exception("Need specific not empty cluster name")
         for_all = True
@@ -163,7 +179,7 @@ class UpCommand(Command):
         except:
             # a new cluster
             if not args.IMAGE:
-                raise Exception("New cluster must specific image")
+                raise Exception("New cluster must specific image") from None
             if args.fe_id != None:
                 args.fe_id = None
                 LOG.warning(
@@ -182,14 +198,20 @@ class UpCommand(Command):
 
         _, related_nodes, _ = get_ids_related_nodes(cluster, args.fe_id,
                                                     args.be_id)
+        add_backends = []
+        add_frontends = []
         if not related_nodes:
             related_nodes = []
         if args.add_fe_num:
             for i in range(args.add_fe_num):
-                related_nodes.append(cluster.add(CLUSTER.Node.TYPE_FE))
+                fe = cluster.add(CLUSTER.Node.TYPE_FE)
+                related_nodes.append(fe)
+                add_frontends.append(fe)
         if args.add_be_num:
             for i in range(args.add_be_num):
-                related_nodes.append(cluster.add(CLUSTER.Node.TYPE_BE))
+                be = cluster.add(CLUSTER.Node.TYPE_BE)
+                related_nodes.append(be)
+                add_backends.append(be)
         if args.IMAGE:
             for node in related_nodes:
                 node.set_image(args.IMAGE)
@@ -218,10 +240,45 @@ class UpCommand(Command):
                     "Not up cluster cause specific --no-start, related node num {}"
                     .format(related_node_num)))
         else:
+            if args.wait_timeout != 0:
+                if args.wait_timeout == -1:
+                    args.wait_timeout = 1000000000
+                expire_ts = time.time() + args.wait_timeout
+                while True:
+                    db_mgr = database.get_db_mgr(args.NAME, False)
+                    dead_frontends = []
+                    for fe in add_frontends:
+                        fe_state = db_mgr.get_fe(fe.id)
+                        if not fe_state or not fe_state.alive:
+                            dead_frontends.append(fe.id)
+                    dead_backends = []
+                    for be in add_backends:
+                        be_state = db_mgr.get_be(be.id)
+                        if not be_state or not be_state.alive:
+                            dead_backends.append(be.id)
+                    if not dead_frontends and not dead_backends:
+                        break
+                    if time.time() >= expire_ts:
+                        err = ""
+                        if dead_frontends:
+                            err += "dead fe: " + str(dead_frontends) + ". "
+                        if dead_backends:
+                            err += "dead be: " + str(dead_backends) + ". "
+                        raise Exception(err)
+                    time.sleep(1)
             LOG.info(
                 utils.render_green(
                     "Up cluster {} succ, related node num {}".format(
                         args.NAME, related_node_num)))
+
+        return {
+            "fe": {
+                "add": [node.info() for node in add_frontends]
+            },
+            "be": {
+                "add": [node.info() for node in add_backends]
+            },
+        }
 
 
 class DownCommand(Command):
