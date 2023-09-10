@@ -45,6 +45,8 @@ def run(args, help):
 
 def main():
     args, help = parse_args()
+    if getattr(args, "output_json", False):
+        utils.set_enable_log(False)
     return run(args, help)
 
 

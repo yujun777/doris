@@ -74,6 +74,12 @@ class Command(object):
     def run(self, args):
         raise Exception("No implemented")
 
+    def _add_parser_output_json(self, parser):
+        parser.add_argument("--output-json",
+                            default=False,
+                            action=self._get_parser_bool_action(True),
+                            help="output as json, and don't print log")
+
     def _add_parser_ids_args(self, parser):
         group = parser.add_argument_group("for existing nodes",
                                           "apply to the existing nodes.")
@@ -101,6 +107,7 @@ class SimpleCommand(Command):
         parser = args_parsers.add_parser(self.command, help=help)
         parser.add_argument("NAME", help="Specify cluster name.")
         self._add_parser_ids_args(parser)
+        self._add_parser_output_json(parser)
 
     def run(self, args):
         cluster = CLUSTER.Cluster.load(args.NAME)
@@ -136,10 +143,7 @@ class UpCommand(Command):
             "Specify wait seconds for upping: 0(default) not wait, > 0 max wait seconds, -1 wait unlimited."
         )
 
-        parser.add_argument("--output-json",
-                            default=False,
-                            action=self._get_parser_bool_action(True),
-                            help="output as json, and don't print log")
+        self._add_parser_output_json(parser)
 
         group1 = parser.add_argument_group("add new nodes",
                                            "add cluster nodes.")
@@ -167,8 +171,6 @@ class UpCommand(Command):
                                 "and image haven't changed. ")
 
     def run(self, args):
-        if args.output_json:
-            utils.set_enable_log(False)
         if not args.NAME:
             raise Exception("Need specific not empty cluster name")
         for_all = True
@@ -291,6 +293,7 @@ class DownCommand(Command):
                                            "then apply to all containers.")
         parser.add_argument("NAME", help="Specify cluster name")
         self._add_parser_ids_args(parser)
+        self._add_parser_output_json(parser)
         parser.add_argument(
             "--clean",
             default=False,
@@ -415,12 +418,25 @@ class ListCommand(Command):
             help=
             "Specify multiple clusters, if specific, show all their containers."
         )
+        self._add_parser_output_json(parser)
         parser.add_argument(
             "-a",
             "--all",
             default=False,
             action=self._get_parser_bool_action(True),
             help="Show all stopped and bad doris compose projects")
+
+    def handle_data(self, header, datas):
+        if utils.is_enable_log():
+            table = prettytable.PrettyTable(
+                [utils.render_green(field) for field in header])
+            for row in datas:
+                table.add_row(row)
+            print(table)
+            return ""
+        else:
+            datas.insert(0, header)
+            return datas
 
     def run(self, args):
         COMPOSE_MISSING = "(missing)"
@@ -484,9 +500,8 @@ class ListCommand(Command):
 
         TYPE_COMPOSESERVICE = type(ComposeService("", "", ""))
         if not args.NAME:
-            headers = (utils.render_green(field)
-                       for field in ("CLUSTER", "STATUS", "CONFIG FILES"))
-            table = prettytable.PrettyTable(headers)
+            header = ("CLUSTER", "STATUS", "CONFIG FILES")
+            rows = []
             for name in sorted(clusters.keys()):
                 cluster_info = clusters[name]
                 service_statuses = {}
@@ -502,19 +517,15 @@ class ListCommand(Command):
                 if not args.all and service_statuses.get("running", 0) == 0:
                     continue
                 compose_file = CLUSTER.get_compose_file(name)
-                table.add_row(
+                rows.append(
                     (name, show_status, "{}{}".format(compose_file,
                                                       cluster_info["status"])))
-            print(table)
-            return
+            return self.handle_data(header, rows)
 
-        headers = (utils.render_green(field)
-                   for field in ("CLUSTER", "NAME", "IP", "STATUS",
-                                 "CONTAINER ID", "IMAGE", "CREATED", "alive",
-                                 "is_master", "query_port", "tablet_num",
-                                 "last_heartbeat", "err_msg"))
-        table = prettytable.PrettyTable(headers)
-
+        header = ("CLUSTER", "NAME", "IP", "STATUS", "CONTAINER ID", "IMAGE",
+                  "CREATED", "alive", "is_master", "query_port", "tablet_num",
+                  "last_heartbeat", "err_msg")
+        rows = []
         for cluster_name in sorted(clusters.keys()):
             fe_ids = {}
             be_ids = {}
@@ -583,9 +594,9 @@ class ListCommand(Command):
                 return key
 
             for node in sorted(nodes, key=get_key):
-                table.add_row(node.info())
+                rows.append(node.info())
 
-        print(table)
+        return self.handle_data(header, rows)
 
 
 ALL_COMMANDS = [
