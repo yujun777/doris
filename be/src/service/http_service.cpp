@@ -233,22 +233,22 @@ Status HttpService::start() {
 
     PadRowsetAction* pad_rowset_action =
             _pool.add(new PadRowsetAction(_env, TPrivilegeHier::GLOBAL, TPrivilegeType::ADMIN));
-    _ev_http_server->register_handler(HttpMethod::POST, "api/pad_rowset", pad_rowset_action);
+    _ev_http_server->register_handler(HttpMethod::POST, "/api/pad_rowset", pad_rowset_action);
 
     // debug point
     AddDebugPointAction* add_debug_point_action =
             _pool.add(new AddDebugPointAction(_env, TPrivilegeHier::GLOBAL, TPrivilegeType::ADMIN));
-    _ev_http_server->register_handler(HttpMethod::POST, "api/debug_point/add/{debug_point}",
+    _ev_http_server->register_handler(HttpMethod::POST, "/api/debug_point/add/{debug_point}",
                                       add_debug_point_action);
 
     RemoveDebugPointAction* remove_debug_point_action = _pool.add(
             new RemoveDebugPointAction(_env, TPrivilegeHier::GLOBAL, TPrivilegeType::ADMIN));
-    _ev_http_server->register_handler(HttpMethod::POST, "api/debug_point/remove/{debug_point}",
+    _ev_http_server->register_handler(HttpMethod::POST, "/api/debug_point/remove/{debug_point}",
                                       remove_debug_point_action);
 
     ClearDebugPointsAction* clear_debug_points_action = _pool.add(
             new ClearDebugPointsAction(_env, TPrivilegeHier::GLOBAL, TPrivilegeType::ADMIN));
-    _ev_http_server->register_handler(HttpMethod::POST, "api/debug_point/clear",
+    _ev_http_server->register_handler(HttpMethod::POST, "/api/debug_point/clear",
                                       clear_debug_points_action);
 
     _ev_http_server->start();

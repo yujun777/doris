@@ -50,7 +50,9 @@ public class DebugPointAction extends RestBaseController {
         }
         executeCheckPassword(request, response);
         checkGlobalAuth(ConnectContext.get().getCurrentUserIdentity(), PrivPredicate.ADMIN);
-
+        if (String.isNullOrEmpty(debugPoint)) {
+            return ResponseEntityBuilder.badRequest("Empty debug point name.");
+        }
         int executeLimit = -1;
         if (!Strings.isNullOrEmpty(execute)) {
             try {
@@ -82,6 +84,9 @@ public class DebugPointAction extends RestBaseController {
         }
         executeCheckPassword(request, response);
         checkGlobalAuth(ConnectContext.get().getCurrentUserIdentity(), PrivPredicate.ADMIN);
+        if (String.isNullOrEmpty(debugPoint)) {
+            return ResponseEntityBuilder.badRequest("Empty debug point name.");
+        }
         DebugPointUtil.removeDebugPoint(debugPoint);
         return ResponseEntityBuilder.ok();
     }
