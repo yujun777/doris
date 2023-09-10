@@ -50,14 +50,12 @@ import org.apache.doris.analysis.CancelAlterTableStmt;
 import org.apache.doris.analysis.CancelBackupStmt;
 import org.apache.doris.analysis.CancelExportStmt;
 import org.apache.doris.analysis.CancelLoadStmt;
-import org.apache.doris.analysis.CleanDebugPointStmt;
 import org.apache.doris.analysis.CleanLabelStmt;
 import org.apache.doris.analysis.CleanProfileStmt;
 import org.apache.doris.analysis.CleanQueryStatsStmt;
 import org.apache.doris.analysis.CreateCatalogStmt;
 import org.apache.doris.analysis.CreateDataSyncJobStmt;
 import org.apache.doris.analysis.CreateDbStmt;
-import org.apache.doris.analysis.CreateDebugPointStmt;
 import org.apache.doris.analysis.CreateEncryptKeyStmt;
 import org.apache.doris.analysis.CreateFileStmt;
 import org.apache.doris.analysis.CreateFunctionStmt;
@@ -81,7 +79,6 @@ import org.apache.doris.analysis.DeleteStmt;
 import org.apache.doris.analysis.DropAnalyzeJobStmt;
 import org.apache.doris.analysis.DropCatalogStmt;
 import org.apache.doris.analysis.DropDbStmt;
-import org.apache.doris.analysis.DropDebugPointStmt;
 import org.apache.doris.analysis.DropEncryptKeyStmt;
 import org.apache.doris.analysis.DropFileStmt;
 import org.apache.doris.analysis.DropFunctionStmt;
@@ -124,7 +121,6 @@ import org.apache.doris.analysis.UninstallPluginStmt;
 import org.apache.doris.catalog.EncryptKeyHelper;
 import org.apache.doris.catalog.Env;
 import org.apache.doris.common.DdlException;
-import org.apache.doris.common.util.DebugPointUtil;
 import org.apache.doris.common.util.ProfileManager;
 import org.apache.doris.load.sync.SyncJobManager;
 import org.apache.doris.persist.CleanQueryStatsInfo;
@@ -350,12 +346,6 @@ public class DdlExecutor {
             env.getAuth().refreshLdap((RefreshLdapStmt) ddlStmt);
         } else if (ddlStmt instanceof AlterUserStmt) {
             env.getAuth().alterUser((AlterUserStmt) ddlStmt);
-        } else if (ddlStmt instanceof CreateDebugPointStmt) {
-            DebugPointUtil.createDebugPoint((CreateDebugPointStmt) ddlStmt);
-        } else if (ddlStmt instanceof DropDebugPointStmt) {
-            DebugPointUtil.dropDebugPoint((DropDebugPointStmt) ddlStmt);
-        } else if (ddlStmt instanceof CleanDebugPointStmt) {
-            DebugPointUtil.cleanDebugPoint();
         } else if (ddlStmt instanceof CleanProfileStmt) {
             ProfileManager.getInstance().cleanProfile();
         } else if (ddlStmt instanceof DropStatsStmt) {
