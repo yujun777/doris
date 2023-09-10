@@ -17,8 +17,6 @@
 
 package org.apache.doris.common.util;
 
-import org.apache.doris.analysis.CreateDebugPointStmt;
-import org.apache.doris.analysis.DropDebugPointStmt;
 import org.apache.doris.common.Config;
 
 import java.util.Map;
@@ -56,20 +54,20 @@ public class DebugPointUtil {
         return true;
     }
 
-    public static void createDebugPoint(CreateDebugPointStmt stmt) {
+    public static void addDebugPoint(String name, int executeLimit, long timeoutSecond) {
         DebugPoint debugPoint = new DebugPoint();
-        debugPoint.executeLimit = stmt.getExcuteLimit();
-        if (stmt.getTimeoutSeconds() > 0) {
-            debugPoint.expireTime = System.currentTimeMillis() + stmt.getTimeoutSeconds() * 1000;
+        debugPoint.executeLimit = executeLimit;
+        if (timeoutSecond > 0) {
+            debugPoint.expireTime = System.currentTimeMillis() + timeoutSecond * 1000;
         }
-        debugPoints.put(stmt.getDebugPointName(), debugPoint);
+        debugPoints.put(name, debugPoint);
     }
 
-    public static void dropDebugPoint(DropDebugPointStmt stmt) {
-        debugPoints.remove(stmt.getDebugPointName());
+    public static void removeDebugPoint(String name) {
+        debugPoints.remove(name);
     }
 
-    public static void cleanDebugPoint() {
+    public static void clearDebugPoints() {
         debugPoints.clear();
     }
 }
