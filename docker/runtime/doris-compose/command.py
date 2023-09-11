@@ -309,7 +309,11 @@ class DownCommand(Command):
                     "it will send dropp to fe, otherwise send decommission to fe.")
 
     def run(self, args):
-        cluster = CLUSTER.Cluster.load(args.NAME)
+        cluster = None
+        try:
+            cluster = CLUSTER.Cluster.load(args.NAME)
+        except:
+            return "Cluster not exists or load failed"
         for_all, related_nodes, related_node_num = get_ids_related_nodes(
             cluster, args.fe_id, args.be_id, ignore_not_exists=True)
 
@@ -363,6 +367,8 @@ class DownCommand(Command):
             utils.render_green(
                 "Down cluster {} succ, related node num {}".format(
                     args.NAME, related_node_num)))
+
+        return "down cluster succ"
 
 
 class ListNode(object):

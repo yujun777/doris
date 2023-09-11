@@ -1,0 +1,32 @@
+// Licensed to the Apache Software Foundation (ASF) under one
+// or more contributor license agreements.  See the NOTICE file
+// distributed with this work for additional information
+// regarding copyright ownership.  The ASF licenses this file
+// to you under the Apache License, Version 2.0 (the
+// "License"); you may not use this file except in compliance
+// with the License.  You may obtain a copy of the License at
+//
+//   http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing,
+// software distributed under the License is distributed on an
+// "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+// KIND, either express or implied.  See the License for the
+// specific language governing permissions and limitations
+// under the License.
+
+suite("test_chaos") {
+    def cluster = "test_chaos_cluster"
+    try {
+        def nodes = newCluster(cluster, "yujun-doris:lastest")
+        def masterFe = nodes.fe.add[0]
+        def url = String.format("jdbc:mysql://%s:%s/?useLocalSessionState=true&allowLoadLocalInfile=true",
+                masterFe.ip, masterFe.query_port)
+        connect(user = "root", passwd = "", url = url) {
+            sql """create database test"""
+            sql """create table test.tb1 (k int) DISTRIBUTED BY HASH(k) BUCKETS 10"""
+        }
+    } finally {
+        destroyCluster(cluster)
+    }
+}
