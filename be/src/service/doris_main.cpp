@@ -549,6 +549,8 @@ int main(int argc, char** argv) {
         sleep(10);
     }
 
+    LOG(INFO) << "Begin to stop and join all";
+
     doris::TabletSchemaCache::stop_and_join();
     http_service.stop();
     brpc_service.join();
@@ -559,6 +561,8 @@ int main(int argc, char** argv) {
     be_server->join();
     engine->stop();
 
+    LOG(INFO) << "End stop and join all";
+
     delete be_server;
     be_server = nullptr;
 
@@ -568,6 +572,9 @@ int main(int argc, char** argv) {
     doris::ExecEnv::destroy(exec_env);
     delete engine;
     engine = nullptr;
+
+    LOG(INFO) << "Doris end exitting";
+    std::cerr << "Doris end exitting";
 
     return 0;
 }

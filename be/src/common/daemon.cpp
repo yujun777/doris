@@ -395,6 +395,7 @@ void signal_handler(int signal) {
     if (signal == SIGINT || signal == SIGTERM) {
         k_doris_exit = true;
         LOG(INFO) << "doris start to exit";
+        std::cerr << "doris start to exit";
     }
 }
 
