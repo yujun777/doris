@@ -294,7 +294,7 @@ public class LoadStatisticForTag {
             return true;
         }
         if (tabletSize == 0) {
-            tabletSize = 1;
+            tabletSize = 1L;
         }
 
         currentSrcBeScore = srcBeStat.getLoadScore(medium);
