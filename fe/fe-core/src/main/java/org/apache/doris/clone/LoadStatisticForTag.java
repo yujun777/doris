@@ -293,6 +293,9 @@ public class LoadStatisticForTag {
         if (srcBeStat.getBeId() == debugHighBeId) {
             return true;
         }
+        if (tabletSize == 0) {
+            tabletSize = 1;
+        }
 
         currentSrcBeScore = srcBeStat.getLoadScore(medium);
         currentDestBeScore = destBeStat.getLoadScore(medium);
