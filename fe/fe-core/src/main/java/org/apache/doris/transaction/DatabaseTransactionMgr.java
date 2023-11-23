@@ -933,7 +933,8 @@ public class DatabaseTransactionMgr {
         }
     }
 
-    public void finishTransaction(long transactionId) throws UserException {
+    public void finishTransaction(long transactionId, Map<Long, Long> partitionVisibleVersions,
+            Map<Long, Set<Long>> backendPartitions) throws UserException {
         TransactionState transactionState = null;
         readLock();
         try {
@@ -1124,7 +1125,7 @@ public class DatabaseTransactionMgr {
                     LOG.warn("afterStateTransform txn {} failed. exception: ", transactionState, e);
                 }
             }
-            updateCatalogAfterVisible(transactionState, db);
+            updateCatalogAfterVisible(transactionState, db, partitionVisibleVersions, backendPartitions);
         } finally {
             MetaLockUtils.writeUnlockTables(tableList);
         }
@@ -1782,7 +1783,8 @@ public class DatabaseTransactionMgr {
         }
     }
 
-    private boolean updateCatalogAfterVisible(TransactionState transactionState, Database db) {
+    private boolean updateCatalogAfterVisible(TransactionState transactionState, Database db,
+            Map<Long, Long> partitionVisibleVersions, Map<Long, Set<Long>> backendPartitions) {
         Set<Long> errorReplicaIds = transactionState.getErrorReplicas();
         for (TableCommitInfo tableCommitInfo : transactionState.getIdToTableCommitInfos().values()) {
             long tableId = tableCommitInfo.getTableId();
@@ -1838,12 +1840,19 @@ public class DatabaseTransactionMgr {
                                 }
                             }
                             replica.updateVersionWithFailedInfo(newVersion, lastFailedVersion, lastSuccessVersion);
+                            Set<Long> partitionIds = backendPartitions.get(replica.getBackendId());
+                            if (partitionIds == null) {
+                                partitionIds = Sets.newHashSet();
+                                backendPartitions.put(replica.getBackendId(), partitionIds);
+                            }
+                            partitionIds.add(partitionId);
                         }
                     }
                 } // end for indices
                 long version = partitionCommitInfo.getVersion();
                 long versionTime = partitionCommitInfo.getVersionTime();
                 partition.updateVisibleVersionAndTime(version, versionTime);
+                partitionVisibleVersions.put(partition.getId(), version);
                 if (LOG.isDebugEnabled()) {
                     LOG.debug("transaction state {} set partition {}'s version to [{}]",
                             transactionState, partition.getId(), version);
@@ -1987,7 +1996,7 @@ public class DatabaseTransactionMgr {
                 updateCatalogAfterCommitted(transactionState, db);
             } else if (transactionState.getTransactionStatus() == TransactionStatus.VISIBLE) {
                 LOG.info("replay a visible transaction {}", transactionState);
-                updateCatalogAfterVisible(transactionState, db);
+                updateCatalogAfterVisible(transactionState, db, Maps.newHashMap(), Maps.newHashMap());
             }
             unprotectUpsertTransactionState(transactionState, true);
         } finally {

@@ -217,6 +217,10 @@ void TaskWorkerPool::start() {
         _worker_count = 1;
         _cb = std::bind<void>(&TaskWorkerPool::_gc_binlog_worker_thread_callback, this);
         break;
+    case TaskWorkerType::UPDATE_VISIBLE_VERSION:
+        _worker_count = 1;
+        _cb = std::bind<void>(&TaskWorkerPool::_visible_version_worker_thread_callback, this);
+        break;
     default:
         // pass
         break;
@@ -1198,6 +1202,18 @@ void TaskWorkerPool::_push_cooldown_conf_worker_thread_callback() {
                 Tablet::async_write_cooldown_meta(tablet);
             }
         }
+    }
+}
+
+void TaskWorkerPool::_visible_version_worker_thread_callback() {
+    while (_is_work) {
+        TAgentTaskRequest agent_task_req;
+        if (!_get_task(&agent_task_req)) {
+            return;
+        }
+        const TVisibleVersionReq& visible_version_req = agent_task_req.visible_version_req;
+        StorageEngine::instance()->tablet_manager()->update_partitions_visible_version(
+                visible_version_req.partition_version);
     }
 }
 

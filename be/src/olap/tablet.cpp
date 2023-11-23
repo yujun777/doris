@@ -1289,49 +1289,69 @@ std::vector<RowsetSharedPtr> Tablet::pick_candidate_rowsets_to_cumulative_compac
     if (_cumulative_point == K_INVALID_CUMULATIVE_POINT) {
         return candidate_rowsets;
     }
-    {
-        std::shared_lock rlock(_meta_lock);
-        for (const auto& [version, rs] : _rs_version_map) {
-            if (version.first >= _cumulative_point && rs->is_local()) {
-                candidate_rowsets.push_back(rs);
-            }
-        }
-    }
-    std::sort(candidate_rowsets.begin(), candidate_rowsets.end(), Rowset::comparator);
-    return candidate_rowsets;
+    return _pick_candidate_rowsets_to_compaction(_cumulative_point,
+                                                 std::numeric_limits<int64_t>::max());
 }
 
 std::vector<RowsetSharedPtr> Tablet::pick_candidate_rowsets_to_single_replica_compaction() {
-    std::vector<RowsetSharedPtr> candidate_rowsets;
-    {
-        std::shared_lock rlock(_meta_lock);
-        for (const auto& [version, rs] : _rs_version_map) {
-            if (rs->is_local()) {
-                candidate_rowsets.push_back(rs);
-            }
-        }
-    }
-    std::sort(candidate_rowsets.begin(), candidate_rowsets.end(), Rowset::comparator);
-    return candidate_rowsets;
+    return _pick_candidate_rowsets_to_compaction(std::numeric_limits<int64_t>::min(),
+                                                 std::numeric_limits<int64_t>::max());
 }
 
 std::vector<RowsetSharedPtr> Tablet::pick_candidate_rowsets_to_base_compaction() {
-    std::vector<RowsetSharedPtr> candidate_rowsets;
-    {
-        std::shared_lock rlock(_meta_lock);
-        for (const auto& [version, rs] : _rs_version_map) {
-            // Do compaction on local rowsets only.
-            if (version.first < _cumulative_point && rs->is_local()) {
-                candidate_rowsets.push_back(rs);
-            }
-        }
-    }
-    std::sort(candidate_rowsets.begin(), candidate_rowsets.end(), Rowset::comparator);
-    return candidate_rowsets;
+    return _pick_candidate_rowsets_to_compaction(std::numeric_limits<int64_t>::min(),
+                                                 _cumulative_point - 1);
 }
 
 std::vector<RowsetSharedPtr> Tablet::pick_candidate_rowsets_to_full_compaction() {
     return pick_candidate_rowsets_to_single_replica_compaction();
+}
+
+std::vector<RowsetSharedPtr> Tablet::_pick_candidate_rowsets_to_compaction(
+        int64_t min_start_version, int64_t max_start_version) {
+    int64_t visible_version = std::numeric_limits<int64_t>::max();
+    bool visible_version_timeout = true;
+    if (auto version_info = std::atomic_load_explicit(&_visible_version, std::memory_order_relaxed);
+        version_info != nullptr) {
+        visible_version = version_info->version.load(std::memory_order_relaxed);
+        visible_version_timeout = (MonotonicMillis() - version_info->update_ts) >
+                                  config::compaction_keep_invisible_version_timeout_sec * 1000L;
+    }
+
+    std::vector<RowsetSharedPtr> candidate_rowsets;
+    {
+        std::shared_lock rlock(_meta_lock);
+        int64_t max_version = max_version_unlocked().second;
+        for (const auto& [version, rs] : _rs_version_map) {
+            if (version.first >= min_start_version && version.first <= max_start_version &&
+                _can_compact_rowset(rs, max_version, visible_version, visible_version_timeout)) {
+                candidate_rowsets.push_back(rs);
+            }
+        }
+    }
+    std::sort(candidate_rowsets.begin(), candidate_rowsets.end(), Rowset::comparator);
+    return candidate_rowsets;
+}
+
+bool Tablet::_can_compact_rowset(const RowsetSharedPtr& rs, int64_t max_version,
+                                 int64_t visible_version, bool visible_version_timeout) const {
+    // Do compaction on local rowsets only.
+    if (!rs->is_local()) {
+        return false;
+    }
+
+    Version version = rs->version();
+
+    int32_t keep_invisible_version_limit =
+            visible_version_timeout ? config::compaction_keep_invisible_version_min_count
+                                    : config::compaction_keep_invisible_version_max_count;
+
+    // can compact, met one of the conditions:
+    // 1. had been compaction before;
+    // 2. had been visible;
+    // 3. exceeds the limit of keep invisible versions.
+    return version.first != version.second || version.second <= visible_version ||
+           (max_version - version.second) >= keep_invisible_version_limit;
 }
 
 std::vector<RowsetSharedPtr> Tablet::pick_candidate_rowsets_to_build_inverted_index(

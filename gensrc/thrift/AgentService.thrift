@@ -378,6 +378,10 @@ struct TPublishVersionRequest {
     3: optional bool strict_mode = false
 }
 
+struct TVisibleVersionReq {
+    1: required map<Types.TPartitionId, Types.TVersion> partition_version
+}
+
 struct TClearAlterTaskRequest {
     1: required Types.TTabletId tablet_id
     2: required Types.TSchemaHash schema_hash
@@ -475,6 +479,7 @@ struct TAgentTaskRequest {
     31: optional TPushStoragePolicyReq push_storage_policy_req
     32: optional TAlterInvertedIndexReq alter_inverted_index_req
     33: optional TGcBinlogReq gc_binlog_req
+    34: optional TVisibleVersionReq visible_version_req
 }
 
 struct TAgentResult {

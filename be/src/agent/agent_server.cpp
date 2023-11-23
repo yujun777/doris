@@ -125,6 +125,7 @@ AgentServer::AgentServer(ExecEnv* exec_env, const TMasterInfo& master_info)
     CREATE_AND_START_POOL(SUBMIT_TABLE_COMPACTION, _submit_table_compaction_workers);
     CREATE_AND_START_POOL(PUSH_STORAGE_POLICY, _push_storage_policy_workers);
     CREATE_AND_START_THREAD(GC_BINLOG, _gc_binlog_workers);
+    CREATE_AND_START_THREAD(UPDATE_VISIBLE_VERSION, _visible_version_workers);
 #undef CREATE_AND_START_POOL
 #undef CREATE_AND_START_THREAD
 
@@ -241,6 +242,15 @@ void AgentServer::submit_tasks(TAgentResult& agent_result,
             } else {
                 ret_st = Status::InvalidArgument(
                         "task(signature={}) has wrong request member = gc_binlog_req", signature);
+            }
+            break;
+        case TTaskType::UPDATE_VISIBLE_VERSION:
+            if (task.__isset.visible_version_req) {
+                _visible_version_workers->submit_task(task);
+            } else {
+                ret_st = Status::InvalidArgument(
+                        "task(signature={}) has wrong request member = visible_version_req",
+                        signature);
             }
             break;
         default:
