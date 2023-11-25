@@ -73,6 +73,8 @@ public class TabletInvertedIndex {
 
     private StampedLock lock = new StampedLock();
 
+    private Map<Long, Partition> partitionMap = Maps.newConcurrentMap();
+
     // tablet id -> tablet meta
     private Map<Long, TabletMeta> tabletMetaMap = Maps.newHashMap();
 
@@ -525,6 +527,27 @@ public class TabletInvertedIndex {
         return false;
     }
 
+    public Partition getPartition(long partitionId) {
+        return partitionMap.get(partitionId);
+    }
+
+    public void addPartition(Partition partition) {
+        partitionMap.put(partition.getId(), partition);
+    }
+
+    public void deletePartition(long partitionId) {
+        partitionMap.remove(partitionId);
+    }
+
+    public void deletePartitionAndTablets(Partition partition) {
+        partitionMap.remove(partition.getId());
+        for (MaterializedIndex index : partition.getMaterializedIndices(MaterializedIndex.IndexExtState.ALL)) {
+            for (Tablet tablet : index.getTablets()) {
+                deleteTablet(tablet.getId());
+            }
+        }
+    }
+
     // always add tablet before adding replicas
     public void addTablet(long tabletId, TabletMeta tabletMeta) {
         long stamp = writeLock();
@@ -700,6 +723,7 @@ public class TabletInvertedIndex {
     public void clear() {
         long stamp = writeLock();
         try {
+            partitionMap.clear();
             tabletMetaMap.clear();
             replicaToTabletMap.clear();
             tabletMetaTable.clear();

@@ -55,7 +55,9 @@ import java.io.IOException;
 import java.util.Collection;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
+import java.util.stream.Collectors;
 
 public class TempPartitionTest {
 
@@ -187,7 +189,14 @@ public class TempPartitionTest {
         String createTblStmtStr1 = "create table db1.tbl1(k1 int) distributed by hash(k1)"
                 + " buckets 3 properties('replication_num' = '1');";
         CreateTableStmt createTableStmt = (CreateTableStmt) UtFrameUtils.parseAndAnalyzeStmt(createTblStmtStr1, ctx);
+
         Env.getCurrentEnv().createTable(createTableStmt);
+        Database db =
+                Env.getCurrentInternalCatalog().getDbOrAnalysisException("default_cluster:db1");
+        OlapTable tbl = (OlapTable) db.getTableOrAnalysisException("tbl1");
+        Partition partition = tbl.getPartition("tbl1");
+        Assert.assertNotNull(partition);
+        Assert.assertEquals(partition, Env.getCurrentInvertedIndex().getPartition(partition.getId()));
 
         // add temp partition
         String stmtStr = "alter table db1.tbl1 add temporary partition p1 values less than ('10');";
@@ -226,6 +235,10 @@ public class TempPartitionTest {
                 Env.getCurrentInternalCatalog().getDbOrAnalysisException("default_cluster:db2");
         OlapTable tbl2 = (OlapTable) db2.getTableOrAnalysisException("tbl2");
 
+        Partition partition = tbl2.getPartition("p1");
+        Assert.assertNotNull(partition);
+        Assert.assertEquals(partition, Env.getCurrentInvertedIndex().getPartition(partition.getId()));
+
         testSerializeOlapTable(tbl2);
 
         Map<String, Long> originPartitionTabletIds = Maps.newHashMap();
@@ -243,6 +256,9 @@ public class TempPartitionTest {
         // add temp partition
         stmtStr = "alter table db2.tbl2 add temporary partition tp1 values less than('10');";
         alterTable(stmtStr, false);
+        partition = tbl2.getPartition("tp1");
+        Assert.assertNotNull(partition);
+        Assert.assertEquals(partition, Env.getCurrentInvertedIndex().getPartition(partition.getId()));
 
         stmtStr = "alter table db2.tbl2 add temporary partition tp2 values less than('10');";
         alterTable(stmtStr, true);
@@ -252,12 +268,19 @@ public class TempPartitionTest {
 
         stmtStr = "alter table db2.tbl2 add temporary partition tp2 values less than('20');";
         alterTable(stmtStr, false);
+        partition = tbl2.getPartition("tp2");
+        Assert.assertNotNull(partition);
+        Assert.assertEquals(partition, Env.getCurrentInvertedIndex().getPartition(partition.getId()));
 
         stmtStr = "alter table db2.tbl2 add temporary partition tp3 values [('18'), ('30'));";
         alterTable(stmtStr, true);
 
         stmtStr = "alter table db2.tbl2 add temporary partition tp3 values [('20'), ('30'));";
         alterTable(stmtStr, false);
+        partition = tbl2.getPartition("tp3");
+        Assert.assertNotNull(partition);
+        long tp3 = partition.getId();
+        Assert.assertEquals(partition, Env.getCurrentInvertedIndex().getPartition(tp3));
 
         Map<String, Long> tempPartitionTabletIds = Maps.newHashMap();
         getPartitionNameToTabletIdMap("db2.tbl2", true, tempPartitionTabletIds);
@@ -268,6 +291,9 @@ public class TempPartitionTest {
 
         testSerializeOlapTable(tbl2);
 
+        Set<Long> oldPartitionIds = tbl2.getAllPartitions().stream().map(Partition::getId)
+                .collect(Collectors.toSet());
+
         // drop non exist temp partition
         stmtStr = "alter table db2.tbl2 drop temporary partition tp4;";
         alterTable(stmtStr, true);
@@ -277,6 +303,11 @@ public class TempPartitionTest {
 
         stmtStr = "alter table db2.tbl2 drop temporary partition tp3;";
         alterTable(stmtStr, false);
+        partition = tbl2.getPartition("tp3");
+        Assert.assertNull(partition);
+        Assert.assertNull(Env.getCurrentInvertedIndex().getPartition(tp3));
+
+        testInvertIndexPartition(tbl2, oldPartitionIds);
 
         Map<String, Long> originPartitionTabletIds2 = Maps.newHashMap();
         getPartitionNameToTabletIdMap("db2.tbl2", false, originPartitionTabletIds2);
@@ -294,6 +325,8 @@ public class TempPartitionTest {
         alterTable(stmtStr, false);
         checkShowPartitionsResultNum("db2.tbl2", true, 3);
 
+        testInvertIndexPartition(tbl2, oldPartitionIds);
+
         stmtStr = "alter table db2.tbl2 drop partition p1;";
         alterTable(stmtStr, false);
         checkShowPartitionsResultNum("db2.tbl2", true, 3);
@@ -303,12 +336,14 @@ public class TempPartitionTest {
         getPartitionNameToTabletIdMap("db2.tbl2", false, originPartitionTabletIds2);
         Assert.assertEquals(2, originPartitionTabletIds2.size());
         Assert.assertTrue(!originPartitionTabletIds2.containsKey("p1"));
+        testInvertIndexPartition(tbl2, oldPartitionIds);
 
         String recoverStr = "recover partition p1 from db2.tbl2;";
         RecoverPartitionStmt recoverStmt = (RecoverPartitionStmt) UtFrameUtils.parseAndAnalyzeStmt(recoverStr, ctx);
         Env.getCurrentEnv().recoverPartition(recoverStmt);
         checkShowPartitionsResultNum("db2.tbl2", true, 3);
         checkShowPartitionsResultNum("db2.tbl2", false, 3);
+        testInvertIndexPartition(tbl2, oldPartitionIds);
 
         originPartitionTabletIds2 = Maps.newHashMap();
         getPartitionNameToTabletIdMap("db2.tbl2", false, originPartitionTabletIds2);
@@ -338,6 +373,8 @@ public class TempPartitionTest {
         alterTable(stmtStr, false);
         checkShowPartitionsResultNum("db2.tbl2", true, 1);
         checkShowPartitionsResultNum("db2.tbl2", false, 3);
+        tbl2 = (OlapTable) db2.getTableOrAnalysisException("tbl2");
+        testInvertIndexPartition(tbl2, oldPartitionIds);
 
         checkTabletExists(tempPartitionTabletIds2.values(), true);
         checkTabletExists(Lists.newArrayList(originPartitionTabletIds2.get("p3")), true);
@@ -353,6 +390,8 @@ public class TempPartitionTest {
         checkPartitionExist(tbl2, "tp2", false, true);
         checkPartitionExist(tbl2, "p3", false, true);
         checkPartitionExist(tbl2, "tp3", true, true);
+        tbl2 = (OlapTable) db2.getTableOrAnalysisException("tbl2");
+        testInvertIndexPartition(tbl2, oldPartitionIds);
 
         stmtStr = "alter table db2.tbl2 drop partition p3;";
         alterTable(stmtStr, false);
@@ -364,6 +403,7 @@ public class TempPartitionTest {
         // for now, we have 4 partitions: tp1, tp2, p31, p32, 1 temp partition: tp3
         checkShowPartitionsResultNum("db2.tbl2", false, 4);
         checkShowPartitionsResultNum("db2.tbl2", true, 1);
+        testInvertIndexPartition(tbl2, oldPartitionIds);
 
         stmtStr = "alter table db2.tbl2 replace partition(p31) with temporary partition(tp3);";
         alterTable(stmtStr, true);
@@ -377,6 +417,7 @@ public class TempPartitionTest {
         checkPartitionExist(tbl2, "tp1", false, true);
         checkPartitionExist(tbl2, "tp2", false, true);
         checkPartitionExist(tbl2, "tp3", false, true);
+        testInvertIndexPartition(tbl2, oldPartitionIds);
 
         stmtStr = "alter table db2.tbl2 add temporary partition p1 values less than('10');";
         alterTable(stmtStr, false);
@@ -392,6 +433,7 @@ public class TempPartitionTest {
         checkPartitionExist(tbl2, "p1", true, false);
         checkPartitionExist(tbl2, "p2", true, false);
         checkPartitionExist(tbl2, "p3", true, true);
+        testInvertIndexPartition(tbl2, oldPartitionIds);
 
         stmtStr = "alter table db2.tbl2 replace partition(tp3) with temporary partition(p3)"
                 + " properties('use_temp_partition_name' = 'true');";
@@ -404,6 +446,7 @@ public class TempPartitionTest {
         checkPartitionExist(tbl2, "p3", true, false);
         checkShowPartitionsResultNum("db2.tbl2", false, 3);
         checkShowPartitionsResultNum("db2.tbl2", true, 0);
+        testInvertIndexPartition(tbl2, oldPartitionIds);
 
         stmtStr = "alter table db2.tbl2 add temporary partition tp1 values less than('10');"; // name conflict
         alterTable(stmtStr, true);
@@ -419,6 +462,7 @@ public class TempPartitionTest {
         tempPartitionTabletIds2 = Maps.newHashMap();
         getPartitionNameToTabletIdMap("db2.tbl2", true, tempPartitionTabletIds2);
         Assert.assertEquals(1, tempPartitionTabletIds2.keySet().size());
+        testInvertIndexPartition(tbl2, oldPartitionIds);
 
         // for now , we have 3 partitions: tp1, tp2, tp3, 1 temp partition: p1
         System.out.println("we have partition tablets: " + originPartitionTabletIds2);
@@ -430,8 +474,10 @@ public class TempPartitionTest {
         truncateStr = "truncate table db2.tbl2";
         truncateTableStmt = (TruncateTableStmt) UtFrameUtils.parseAndAnalyzeStmt(truncateStr, ctx);
         Env.getCurrentEnv().truncateTable(truncateTableStmt);
+        tbl2 = (OlapTable) db2.getTableOrAnalysisException("tbl2");
         checkShowPartitionsResultNum("db2.tbl2", false, 3);
         checkShowPartitionsResultNum("db2.tbl2", true, 0);
+        testInvertIndexPartition(tbl2, oldPartitionIds);
 
         stmtStr = "alter table db2.tbl2 add rollup r1(k2, k1);";
         alterTable(stmtStr, false);
@@ -472,6 +518,7 @@ public class TempPartitionTest {
 
         checkTablet("db2.tbl2", "p2", false, 2);
         checkTablet("db2.tbl2", "tp3", false, 2);
+        testInvertIndexPartition(tbl2, oldPartitionIds);
 
         // for now, we have 2 partitions: p2, tp3, [min, 20), [20, 30). 0 temp partition.
         stmtStr = "alter table db2.tbl2 add temporary partition tp4 values less than('20') "
@@ -498,6 +545,7 @@ public class TempPartitionTest {
         Assert.assertNotNull(p2);
         Assert.assertFalse(tbl2.getPartitionInfo().getIsInMemory(p2.getId()));
         Assert.assertEquals(3, p2.getDistributionInfo().getBucketNum());
+        testInvertIndexPartition(tbl2, oldPartitionIds);
     }
 
     @Test
@@ -521,7 +569,11 @@ public class TempPartitionTest {
         CreateTableStmt createTableStmt = (CreateTableStmt) UtFrameUtils.parseAndAnalyzeStmt(createTblStmtStr1, ctx);
         Env.getCurrentEnv().createTable(createTableStmt);
 
-        Env.getCurrentInternalCatalog().getDbOrAnalysisException("default_cluster:db3");
+        Database db3 = Env.getCurrentInternalCatalog().getDbOrAnalysisException("default_cluster:db3");
+        OlapTable tbl3 = (OlapTable) db3.getTableOrAnalysisException("tbl3");
+        Set<Long> oldPartitionIds = tbl3.getAllPartitions().stream().map(Partition::getId)
+                .collect(Collectors.toSet());
+        testInvertIndexPartition(tbl3, oldPartitionIds);
 
         // base range is [min, 10), [10, 20), [20, 30)
 
@@ -534,11 +586,14 @@ public class TempPartitionTest {
         alterTable(stmtStr, false);
         stmtStr = "alter table db3.tbl3 replace partition (p2, p3) with temporary partition(tp1, tp2, tp3)";
         alterTable(stmtStr, false);
+        testInvertIndexPartition(tbl3, oldPartitionIds);
 
         // now base range is [min, 10), [10, 15), [15, 25), [25, 30) -> p1,tp1,tp2,tp3
         stmtStr = "truncate table db3.tbl3";
         TruncateTableStmt truncateTableStmt = (TruncateTableStmt) UtFrameUtils.parseAndAnalyzeStmt(stmtStr, ctx);
         Env.getCurrentEnv().truncateTable(truncateTableStmt);
+        tbl3 = (OlapTable) db3.getTableOrAnalysisException("tbl3");
+        testInvertIndexPartition(tbl3, oldPartitionIds);
         // 2. add temp ranges: [10, 31), and replace the [10, 15), [15, 25), [25, 30)
         stmtStr = "alter table db3.tbl3 add temporary partition tp4 values [('10'), ('31'))";
         alterTable(stmtStr, false);
@@ -551,11 +606,14 @@ public class TempPartitionTest {
         alterTable(stmtStr, false);
         stmtStr = "alter table db3.tbl3 replace partition (tp1, tp2, tp3) with temporary partition(tp4)";
         alterTable(stmtStr, false);
+        testInvertIndexPartition(tbl3, oldPartitionIds);
 
         // now base range is [min, 10), [10, 30) -> p1,tp4
         stmtStr = "truncate table db3.tbl3";
         truncateTableStmt = (TruncateTableStmt) UtFrameUtils.parseAndAnalyzeStmt(stmtStr, ctx);
         Env.getCurrentEnv().truncateTable(truncateTableStmt);
+        tbl3 = (OlapTable) db3.getTableOrAnalysisException("tbl3");
+        testInvertIndexPartition(tbl3, oldPartitionIds);
         // 3. add temp partition tp5 [50, 60) and replace partition tp4
         stmtStr = "alter table db3.tbl3 add temporary partition tp5 values [('50'), ('60'))";
         alterTable(stmtStr, false);
@@ -571,6 +629,7 @@ public class TempPartitionTest {
         // now base range is [min, 10), [50, 60) -> p1,tp5
         checkShowPartitionsResultNum("db3.tbl3", false, 2);
         checkShowPartitionsResultNum("db3.tbl3", true, 0);
+        testInvertIndexPartition(tbl3, oldPartitionIds);
     }
 
     @Test
@@ -1287,6 +1346,10 @@ public class TempPartitionTest {
         Assert.assertEquals(tbl.getId(), readTbl.getId());
         Assert.assertEquals(tbl.getTempPartitions().size(), readTbl.getTempPartitions().size());
         file.delete();
+
+        for (Partition partition : readTbl.getAllPartitions()) {
+            Assert.assertEquals(partition, Env.getCurrentInvertedIndex().getPartition(partition.getId()));
+        }
     }
 
     private void testSerializeTempPartitions(TempPartitions tempPartitionsInstance) throws IOException {
@@ -1310,5 +1373,21 @@ public class TempPartitionTest {
         List<Partition> partitions = readTempPartition.getAllPartitions();
         Assert.assertEquals(1, partitions.size());
         Assert.assertEquals(2, partitions.get(0).getMaterializedIndices(IndexExtState.VISIBLE).size());
+
+        for (Partition partition : partitions) {
+            Assert.assertEquals(partition, Env.getCurrentInvertedIndex().getPartition(partition.getId()));
+        }
+    }
+
+    private void testInvertIndexPartition(OlapTable table, Set<Long> oldPartitionIds) throws Exception {
+        for (Partition partition : table.getAllPartitions()) {
+            Assert.assertEquals(partition, Env.getCurrentInvertedIndex().getPartition(partition.getId()));
+            oldPartitionIds.add(partition.getId());
+        }
+        for (Long partitionId : oldPartitionIds) {
+            if (table.getPartition(partitionId) == null) {
+                Assert.assertNull(Env.getCurrentInvertedIndex().getPartition(partitionId));
+            }
+        }
     }
 }

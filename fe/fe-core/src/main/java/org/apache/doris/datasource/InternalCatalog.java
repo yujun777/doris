@@ -380,6 +380,7 @@ public class InternalCatalog implements CatalogIf<Database> {
                 long tableId = olapTable.getId();
                 Collection<Partition> allPartitions = olapTable.getAllPartitions();
                 for (Partition partition : allPartitions) {
+                    invertedIndex.addPartition(partition);
                     long partitionId = partition.getId();
                     TStorageMedium medium = olapTable.getPartitionInfo().getDataProperty(partitionId)
                             .getStorageMedium();
@@ -1286,6 +1287,7 @@ public class InternalCatalog implements CatalogIf<Database> {
             long dbId = db.getId();
             long tableId = table.getId();
             for (Partition partition : olapTable.getAllPartitions()) {
+                invertedIndex.addPartition(partition);
                 long partitionId = partition.getId();
                 TStorageMedium medium = olapTable.getPartitionInfo().getDataProperty(partitionId)
                         .getStorageMedium();
@@ -1531,8 +1533,8 @@ public class InternalCatalog implements CatalogIf<Database> {
         if (!Strings.isNullOrEmpty(dataProperty.getStoragePolicy())) {
             storagePolicy = dataProperty.getStoragePolicy();
         }
+        long partitionId = idGeneratorBuffer.getNextId();
         try {
-            long partitionId = idGeneratorBuffer.getNextId();
             Partition partition = createPartitionWithIndices(db.getClusterName(), db.getId(), olapTable.getId(),
                     olapTable.getName(), olapTable.getBaseIndexId(), partitionId, partitionName, indexIdToMeta,
                     distributionInfo, dataProperty.getStorageMedium(), singlePartitionDesc.getReplicaAlloc(),
@@ -1623,6 +1625,7 @@ public class InternalCatalog implements CatalogIf<Database> {
                 } else {
                     olapTable.addPartition(partition);
                 }
+                Env.getCurrentInvertedIndex().addPartition(partition);
 
                 // log
                 PartitionPersistInfo info = null;
@@ -1649,6 +1652,7 @@ public class InternalCatalog implements CatalogIf<Database> {
                 olapTable.writeUnlock();
             }
         } catch (DdlException e) {
+            Env.getCurrentInvertedIndex().deletePartition(partitionId);
             for (Long tabletId : tabletIdSet) {
                 Env.getCurrentInvertedIndex().deleteTablet(tabletId);
             }
@@ -1682,6 +1686,7 @@ public class InternalCatalog implements CatalogIf<Database> {
 
             // add to inverted index
             TabletInvertedIndex invertedIndex = Env.getCurrentInvertedIndex();
+            invertedIndex.addPartition(partition);
             for (MaterializedIndex index : partition.getMaterializedIndices(IndexExtState.ALL)) {
                 long indexId = index.getId();
                 int schemaHash = olapTable.getSchemaHashByIndexId(indexId);
@@ -1724,7 +1729,10 @@ public class InternalCatalog implements CatalogIf<Database> {
         // drop
         long recycleTime = 0;
         if (isTempPartition) {
-            olapTable.dropTempPartition(partitionName, true);
+            Partition partition = olapTable.dropTempPartition(partitionName);
+            if (partition != null) {
+                Env.getCurrentInvertedIndex().deletePartitionAndTablets(partition);
+            }
         } else {
             Partition partition = null;
             if (!clause.isForceDrop()) {
@@ -1761,7 +1769,10 @@ public class InternalCatalog implements CatalogIf<Database> {
         olapTable.writeLock();
         try {
             if (info.isTempPartition()) {
-                olapTable.dropTempPartition(info.getPartitionName(), true);
+                Partition partition = olapTable.dropTempPartition(info.getPartitionName());
+                if (partition != null) {
+                    Env.getCurrentInvertedIndex().deletePartitionAndTablets(partition);
+                }
             } else {
                 Partition partition = olapTable.dropPartition(info.getDbId(), info.getPartitionName(),
                         info.isForceDrop());
@@ -2472,6 +2483,7 @@ public class InternalCatalog implements CatalogIf<Database> {
                         partitionInfo.getDataProperty(partitionId).isStorageMediumSpecified(),
                         keysDesc.getClusterKeysColumnIds());
                 olapTable.addPartition(partition);
+                Env.getCurrentInvertedIndex().addPartition(partition);
             } else if (partitionInfo.getType() == PartitionType.RANGE
                     || partitionInfo.getType() == PartitionType.LIST) {
                 try {
@@ -2549,6 +2561,7 @@ public class InternalCatalog implements CatalogIf<Database> {
                     olapTable.addPartition(partition);
                     olapTable.getPartitionInfo().getDataProperty(partition.getId())
                             .setStoragePolicy(partionStoragePolicy);
+                    Env.getCurrentInvertedIndex().addPartition(partition);
                 }
             } else {
                 throw new DdlException("Unsupported partition method: " + partitionInfo.getType().name());
@@ -2564,6 +2577,9 @@ public class InternalCatalog implements CatalogIf<Database> {
                     // if this is a colocate table, its table id is already added to colocate group
                     // so we should remove the tableId here
                     Env.getCurrentColocateIndex().removeTable(tableId);
+                }
+                for (Partition partition : olapTable.getAllPartitions()) {
+                    Env.getCurrentInvertedIndex().deletePartition(partition.getId());
                 }
                 for (Long tabletId : tabletIdSet) {
                     Env.getCurrentInvertedIndex().deleteTablet(tabletId);
@@ -2589,6 +2605,9 @@ public class InternalCatalog implements CatalogIf<Database> {
                                 TimeUtils.getCurrentFormatTime());
             }
         } catch (DdlException e) {
+            for (Partition partition : olapTable.getAllPartitions()) {
+                Env.getCurrentInvertedIndex().deletePartition(partition.getId());
+            }
             for (Long tabletId : tabletIdSet) {
                 Env.getCurrentInvertedIndex().deleteTablet(tabletId);
             }
@@ -3071,25 +3090,15 @@ public class InternalCatalog implements CatalogIf<Database> {
 
     private void truncateTableInternal(OlapTable olapTable, List<Partition> newPartitions, boolean isEntireTable) {
         // use new partitions to replace the old ones.
-        Set<Long> oldTabletIds = Sets.newHashSet();
         for (Partition newPartition : newPartitions) {
             Partition oldPartition = olapTable.replacePartition(newPartition);
-            // save old tablets to be removed
-            for (MaterializedIndex index : oldPartition.getMaterializedIndices(IndexExtState.ALL)) {
-                index.getTablets().forEach(t -> {
-                    oldTabletIds.add(t.getId());
-                });
-            }
+            Env.getCurrentInvertedIndex().deletePartitionAndTablets(oldPartition);
+            Env.getCurrentInvertedIndex().addPartition(newPartition);
         }
 
         if (isEntireTable) {
             // drop all temp partitions
             olapTable.dropAllTempPartitions();
-        }
-
-        // remove the tablets in old partitions
-        for (Long tabletId : oldTabletIds) {
-            Env.getCurrentInvertedIndex().deleteTablet(tabletId);
         }
     }
 
@@ -3103,6 +3112,7 @@ public class InternalCatalog implements CatalogIf<Database> {
             // add tablet to inverted index
             TabletInvertedIndex invertedIndex = Env.getCurrentInvertedIndex();
             for (Partition partition : info.getPartitions()) {
+                invertedIndex.addPartition(partition);
                 long partitionId = partition.getId();
                 TStorageMedium medium = olapTable.getPartitionInfo().getDataProperty(partitionId)
                         .getStorageMedium();

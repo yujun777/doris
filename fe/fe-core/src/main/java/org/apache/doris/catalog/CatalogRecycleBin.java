@@ -873,6 +873,7 @@ public class CatalogRecycleBin extends MasterDaemon implements Writable {
             OlapTable olapTable = (OlapTable) table;
             long tableId = olapTable.getId();
             for (Partition partition : olapTable.getAllPartitions()) {
+                invertedIndex.addPartition(partition);
                 long partitionId = partition.getId();
                 TStorageMedium medium = olapTable.getPartitionInfo().getDataProperty(partitionId).getStorageMedium();
                 for (MaterializedIndex index : partition.getMaterializedIndices(IndexExtState.ALL)) {
@@ -924,6 +925,7 @@ public class CatalogRecycleBin extends MasterDaemon implements Writable {
                 olapTable = (OlapTable) tableInfo.getTable();
             }
             Preconditions.checkNotNull(olapTable);
+            invertedIndex.addPartition(partition);
             // storage medium should be got from RecyclePartitionInfo, not from olap table. because olap table
             // does not have this partition any more
             TStorageMedium medium = partitionInfo.getDataProperty().getStorageMedium();

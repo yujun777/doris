@@ -83,6 +83,9 @@ public class DropPartitionTest {
         Database db = Env.getCurrentInternalCatalog().getDbOrMetaException("default_cluster:test");
         OlapTable table = (OlapTable) db.getTableOrMetaException("tbl1", Table.TableType.OLAP);
         Partition partition = table.getPartition("p20210201");
+        Assert.assertNotNull(partition);
+        long partitionId = partition.getId();
+        Assert.assertEquals(partition, Env.getCurrentInvertedIndex().getPartition(partitionId));
         long tabletId = partition.getBaseIndex().getTablets().get(0).getId();
         String dropPartitionSql = " alter table test.tbl1 drop partition p20210201;";
         dropPartition(dropPartitionSql);
@@ -90,12 +93,14 @@ public class DropPartitionTest {
         partition = table.getPartition("p20210201");
         Assert.assertEquals(1, replicaList.size());
         Assert.assertNull(partition);
+        Assert.assertNull(Env.getCurrentInvertedIndex().getPartition(partitionId));
         String recoverPartitionSql = "recover partition p20210201 from test.tbl1";
         RecoverPartitionStmt recoverPartitionStmt = (RecoverPartitionStmt) UtFrameUtils.parseAndAnalyzeStmt(recoverPartitionSql, connectContext);
         Env.getCurrentEnv().recoverPartition(recoverPartitionStmt);
         partition = table.getPartition("p20210201");
         Assert.assertNotNull(partition);
         Assert.assertEquals("p20210201", partition.getName());
+        Assert.assertEquals(partition, Env.getCurrentInvertedIndex().getPartition(partitionId));
     }
 
     @Test
@@ -103,6 +108,8 @@ public class DropPartitionTest {
         Database db = Env.getCurrentInternalCatalog().getDbOrMetaException("default_cluster:test");
         OlapTable table = (OlapTable) db.getTableOrMetaException("tbl1", Table.TableType.OLAP);
         Partition partition = table.getPartition("p20210202");
+        Assert.assertNotNull(partition);
+        long partitionId = partition.getId();
         long tabletId = partition.getBaseIndex().getTablets().get(0).getId();
         String dropPartitionSql = " alter table test.tbl1 drop partition p20210202 force;";
         dropPartition(dropPartitionSql);
@@ -110,6 +117,7 @@ public class DropPartitionTest {
         partition = table.getPartition("p20210202");
         Assert.assertTrue(replicaList.isEmpty());
         Assert.assertNull(partition);
+        Assert.assertNull(Env.getCurrentInvertedIndex().getPartition(partitionId));
         String recoverPartitionSql = "recover partition p20210202 from test.tbl1";
         RecoverPartitionStmt recoverPartitionStmt = (RecoverPartitionStmt) UtFrameUtils.parseAndAnalyzeStmt(recoverPartitionSql, connectContext);
         ExceptionChecker.expectThrowsWithMsg(DdlException.class,
@@ -122,11 +130,14 @@ public class DropPartitionTest {
         Database db = Env.getCurrentInternalCatalog().getDbOrMetaException("default_cluster:test");
         OlapTable table = (OlapTable) db.getTableOrMetaException("tbl1", Table.TableType.OLAP);
         Partition partition = table.getPartition("p20210203");
+        Assert.assertNotNull(partition);
+        long partitionId = partition.getId();
         long tabletId = partition.getBaseIndex().getTablets().get(0).getId();
         table.dropPartitionAndReserveTablet("p20210203");
         List<Replica> replicaList = Env.getCurrentEnv().getTabletInvertedIndex().getReplicasByTabletId(tabletId);
         partition = table.getPartition("p20210203");
         Assert.assertEquals(1, replicaList.size());
         Assert.assertNull(partition);
+        Assert.assertNull(Env.getCurrentInvertedIndex().getPartition(partitionId));
     }
 }

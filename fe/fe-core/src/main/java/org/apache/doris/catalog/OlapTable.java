@@ -824,6 +824,11 @@ public class OlapTable extends Table {
         nameToPartition.put(partition.getName(), partition);
     }
 
+    private void deletePartition(Partition partition) {
+        idToPartition.remove(partition.getId());
+        nameToPartition.remove(partition.getName());
+    }
+
     // This is a private method.
     // Call public "dropPartitionAndReserveTablet" and "dropPartition"
     private Partition dropPartition(long dbId, String partitionName, boolean isForceDrop, boolean reserveTablets) {
@@ -835,9 +840,7 @@ public class OlapTable extends Table {
         //    Otherwise, the tablets of this partition will be deleted immediately.
         Partition partition = nameToPartition.get(partitionName);
         if (partition != null) {
-            idToPartition.remove(partition.getId());
-            nameToPartition.remove(partitionName);
-
+            deletePartition(partition);
             if (!isForceDrop) {
                 // recycle partition
                 if (partitionInfo.getType() == PartitionType.RANGE) {
@@ -1445,8 +1448,7 @@ public class OlapTable extends Table {
         int partitionCount = in.readInt();
         for (int i = 0; i < partitionCount; ++i) {
             Partition partition = Partition.read(in);
-            idToPartition.put(partition.getId(), partition);
-            nameToPartition.put(partition.getName(), partition);
+            addPartition(partition);
         }
 
         if (in.readBoolean()) {
@@ -1574,10 +1576,8 @@ public class OlapTable extends Table {
      */
     public Partition replacePartition(Partition newPartition) {
         Partition oldPartition = nameToPartition.remove(newPartition.getName());
-        idToPartition.remove(oldPartition.getId());
-
-        idToPartition.put(newPartition.getId(), newPartition);
-        nameToPartition.put(newPartition.getName(), newPartition);
+        deletePartition(oldPartition);
+        addPartition(newPartition);
 
         DataProperty dataProperty = partitionInfo.getDataProperty(oldPartition.getId());
         ReplicaAllocation replicaAlloc = partitionInfo.getReplicaAllocation(oldPartition.getId());
@@ -2081,14 +2081,14 @@ public class OlapTable extends Table {
         }
     }
 
-    // drop temp partition. if needDropTablet is true, tablets of this temp partition
-    // will be dropped from tablet inverted index.
-    public void dropTempPartition(String partitionName, boolean needDropTablet) {
+    public Partition dropTempPartition(String partitionName) {
         Partition partition = getPartition(partitionName, true);
         if (partition != null) {
             partitionInfo.dropPartition(partition.getId());
-            tempPartitions.dropPartition(partitionName, needDropTablet);
+            tempPartitions.dropPartition(partitionName);
         }
+
+        return partition;
     }
 
     /*
@@ -2122,10 +2122,10 @@ public class OlapTable extends Table {
         // 2. add temp partitions' range info to rangeInfo, and remove them from tempPartitionInfo
         for (String partitionName : tempPartitionNames) {
             Partition partition = tempPartitions.getPartition(partitionName);
+            // drop
+            tempPartitions.dropPartition(partitionName);
             // add
             addPartition(partition);
-            // drop
-            tempPartitions.dropPartition(partitionName, false);
             // move the range from idToTempRange to idToRange
             partitionInfo.moveFromTempToFormal(partition.getId());
         }
@@ -2182,9 +2182,9 @@ public class OlapTable extends Table {
 
     public void dropAllTempPartitions() {
         for (Partition partition : tempPartitions.getAllPartitions()) {
-            partitionInfo.dropPartition(partition.getId());
+            dropTempPartition(partition.getName());
+            Env.getCurrentInvertedIndex().deletePartitionAndTablets(partition);
         }
-        tempPartitions.dropAll();
     }
 
     public boolean existTempPartitions() {

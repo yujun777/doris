@@ -1019,6 +1019,7 @@ public class RestoreJob extends AbstractJob {
         } finally {
             localTbl.readUnlock();
         }
+        Env.getCurrentInvertedIndex().addPartition(restorePart);
         for (MaterializedIndex restoredIdx : restorePart.getMaterializedIndices(IndexExtState.VISIBLE)) {
             MaterializedIndexMeta indexMeta = localTbl.getIndexMetaByIndexId(restoredIdx.getId());
             for (Tablet restoreTablet : restoredIdx.getTablets()) {
@@ -1222,6 +1223,7 @@ public class RestoreJob extends AbstractJob {
                     remotePartitionInfo.getIsInMemory(remotePartId),
                     remotePartitionInfo.getIsMutable(remotePartId));
             localTbl.addPartition(restorePart);
+            Env.getCurrentInvertedIndex().addPartition(restorePart);
 
             // modify tablet inverted index
             for (MaterializedIndex restoreIdx : restorePart.getMaterializedIndices(IndexExtState.VISIBLE)) {
@@ -1256,6 +1258,7 @@ public class RestoreJob extends AbstractJob {
             try {
                 // modify tablet inverted index
                 for (Partition restorePart : olapRestoreTbl.getPartitions()) {
+                    Env.getCurrentInvertedIndex().addPartition(restorePart);
                     for (MaterializedIndex restoreIdx : restorePart.getMaterializedIndices(IndexExtState.VISIBLE)) {
                         int schemaHash = olapRestoreTbl.getSchemaHashByIndexId(restoreIdx.getId());
                         for (Tablet restoreTablet : restoreIdx.getTablets()) {
@@ -1883,11 +1886,7 @@ public class RestoreJob extends AbstractJob {
                             restoreOlapTable.writeLock();
                             try {
                                 for (Partition part : restoreOlapTable.getPartitions()) {
-                                    for (MaterializedIndex idx : part.getMaterializedIndices(IndexExtState.VISIBLE)) {
-                                        for (Tablet tablet : idx.getTablets()) {
-                                            Env.getCurrentInvertedIndex().deleteTablet(tablet.getId());
-                                        }
-                                    }
+                                    Env.getCurrentInvertedIndex().deletePartitionAndTablets(part);
                                 }
                                 db.dropTable(restoreTbl.getName());
                             } finally {

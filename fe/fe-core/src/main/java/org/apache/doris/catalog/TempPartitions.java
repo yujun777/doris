@@ -17,7 +17,6 @@
 
 package org.apache.doris.catalog;
 
-import org.apache.doris.catalog.MaterializedIndex.IndexExtState;
 import org.apache.doris.common.io.Text;
 import org.apache.doris.common.io.Writable;
 import org.apache.doris.persist.gson.GsonPostProcessable;
@@ -25,7 +24,6 @@ import org.apache.doris.persist.gson.GsonUtils;
 
 import com.google.common.collect.Lists;
 import com.google.common.collect.Maps;
-import com.google.common.collect.Sets;
 import com.google.gson.annotations.SerializedName;
 
 import java.io.DataInput;
@@ -34,7 +32,6 @@ import java.io.IOException;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
-import java.util.Set;
 
 // This class saved all temp partitions of a table.
 // temp partition is used to implement the overwrite load.
@@ -70,22 +67,15 @@ public class TempPartitions implements Writable, GsonPostProcessable {
 
     /*
      * Drop temp partitions.
-     * If needDropTablet is true, also drop the tablet from tablet inverted index.
      */
-    public void dropPartition(String partitionName, boolean needDropTablet) {
+    public Partition dropPartition(String partitionName) {
         Partition partition = nameToPartition.get(partitionName);
         if (partition != null) {
             idToPartition.remove(partition.getId());
-            nameToPartition.remove(partitionName);
-            if (needDropTablet) {
-                TabletInvertedIndex invertedIndex = Env.getCurrentInvertedIndex();
-                for (MaterializedIndex index : partition.getMaterializedIndices(IndexExtState.ALL)) {
-                    for (Tablet tablet : index.getTablets()) {
-                        invertedIndex.deleteTablet(tablet.getId());
-                    }
-                }
-            }
+            nameToPartition.remove(partition.getName());
         }
+
+        return partition;
     }
 
     public Partition getPartition(long partitionId) {
@@ -118,14 +108,6 @@ public class TempPartitions implements Writable, GsonPostProcessable {
         partitionInfo = null;
     }
 
-    // drop all temp partitions
-    public void dropAll() {
-        Set<String> partNames = Sets.newHashSet(nameToPartition.keySet());
-        for (String partName : partNames) {
-            dropPartition(partName, true);
-        }
-    }
-
     @Override
     public void write(DataOutput out) throws IOException {
         String json = GsonUtils.GSON.toJson(this);
@@ -142,8 +124,7 @@ public class TempPartitions implements Writable, GsonPostProcessable {
         int size = in.readInt();
         for (int i = 0; i < size; i++) {
             Partition partition = Partition.read(in);
-            idToPartition.put(partition.getId(), partition);
-            nameToPartition.put(partition.getName(), partition);
+            addPartition(partition);
         }
         if (in.readBoolean()) {
             partitionInfo = (RangePartitionInfo) RangePartitionInfo.read(in);

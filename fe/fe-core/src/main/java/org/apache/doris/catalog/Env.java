@@ -5490,11 +5490,7 @@ public class Env {
         TabletInvertedIndex invertedIndex = Env.getCurrentInvertedIndex();
         Collection<Partition> allPartitions = olapTable.getAllPartitions();
         for (Partition partition : allPartitions) {
-            for (MaterializedIndex index : partition.getMaterializedIndices(IndexExtState.ALL)) {
-                for (Tablet tablet : index.getTablets()) {
-                    invertedIndex.deleteTablet(tablet.getId());
-                }
-            }
+            invertedIndex.deletePartitionAndTablets(partition);
         }
 
         if (!isReplay && !Env.isCheckpointThread()) {
@@ -5528,12 +5524,7 @@ public class Env {
 
     public void onErasePartition(Partition partition) {
         // remove tablet in inverted index
-        TabletInvertedIndex invertedIndex = Env.getCurrentInvertedIndex();
-        for (MaterializedIndex index : partition.getMaterializedIndices(IndexExtState.ALL)) {
-            for (Tablet tablet : index.getTablets()) {
-                invertedIndex.deleteTablet(tablet.getId());
-            }
-        }
+        Env.getCurrentInvertedIndex().deletePartitionAndTablets(partition);
     }
 
     public void cleanTrash(AdminCleanTrashStmt stmt) {
