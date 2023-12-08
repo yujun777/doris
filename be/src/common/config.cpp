@@ -146,6 +146,8 @@ DEFINE_Int32(heartbeat_service_port, "9050");
 DEFINE_Int32(heartbeat_service_thread_count, "1");
 // the count of thread to create table
 DEFINE_Int32(create_tablet_worker_count, "3");
+// create tablets of partition round robin disk
+DEFINE_mBool(create_tablet_round_robin_disk, "true");
 // the count of thread to drop table
 DEFINE_Int32(drop_tablet_worker_count, "3");
 // the count of thread to batch load

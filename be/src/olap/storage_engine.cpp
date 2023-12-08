@@ -449,17 +449,31 @@ std::vector<DataDir*> StorageEngine::get_stores_for_create_tablet(
         DataDir* data_dir;
 
         size_t disk_available;
+
         //if disk_available is high, then available_level is small
         int available_level;
 
-        int tablet_num;
+        int partition_tablet_num;
+
+        int total_tablet_num;
+
+        bool equal_level_and_tablet_num(const DirInfo& other) const {
+            return available_level == other.available_level &&
+                   partition_tablet_num == other.partition_tablet_num &&
+                   total_tablet_num == other.total_tablet_num;
+        }
 
         bool operator<(const DirInfo& other) const {
             if (available_level != other.available_level) {
                 return available_level < other.available_level;
             }
-            if (tablet_num != other.tablet_num) {
-                return tablet_num < other.tablet_num;
+            if (config::create_tablet_round_robin_disk) {
+                if (partition_tablet_num != other.partition_tablet_num) {
+                    return partition_tablet_num < other.partition_tablet_num;
+                }
+            }
+            if (total_tablet_num != other.total_tablet_num) {
+                return total_tablet_num < other.total_tablet_num;
             }
             return data_dir->path_hash() < other.data_dir->path_hash();
         }
@@ -513,7 +527,7 @@ std::vector<DataDir*> StorageEngine::get_stores_for_create_tablet(
     }
 
     for (auto& dir_info : dir_infos) {
-        dir_info.tablet_num = dir_info.data_dir->tablet_num();
+        dir_info.total_tablet_num = dir_info.data_dir->tablet_num();
         dir_info.available_level = available_levels[dir_info.disk_available];
     }
 
@@ -529,8 +543,7 @@ std::vector<DataDir*> StorageEngine::get_stores_for_create_tablet(
     stores.reserve(dir_infos.size());
     for (size_t i = 0; i < dir_infos.size();) {
         size_t end = i + 1;
-        while (end < dir_infos.size() && dir_infos[i].tablet_num == dir_infos[end].tablet_num &&
-               dir_infos[i].available_level == dir_infos[end].available_level) {
+        while (end < dir_infos.size() && dir_infos[i].equal_level_and_tablet_num(dir_infos[end])) {
             end++;
         }
         // data dirs [i, end) have the same tablet size, round robin range [i, end)
