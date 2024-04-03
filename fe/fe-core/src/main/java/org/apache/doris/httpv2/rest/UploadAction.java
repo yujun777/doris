@@ -131,7 +131,7 @@ public class UploadAction extends RestBaseController {
             @PathVariable(value = TABLE_KEY) String tblName,
             HttpServletRequest request, HttpServletResponse response) {
 
-        if (Config.enable_aps_env) {
+        if (!Strings.isNullOrEmpty(Config.security_checker_class_name)) {
             return ResponseEntityBuilder.badRequest("Not support upload data api in apsaradb env");
         }
 

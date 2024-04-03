@@ -429,7 +429,7 @@ public class LoadAction extends RestBaseController {
             throw new LoadException("Invalid header host: " + reqHost);
         }
 
-        if (Config.enable_aps_env) {
+        if (!Strings.isNullOrEmpty(Config.security_checker_class_name)) {
             // ip
             if (InetAddressValidator.getInstance().isValid(reqHost)) {
                 InetAddress addr;

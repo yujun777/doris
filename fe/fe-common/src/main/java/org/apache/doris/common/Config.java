@@ -2672,6 +2672,10 @@ public class Config extends ConfigBase {
 
     @ConfField(mutable = true)
     public static boolean cloud_preheating_enabled = true;
+
+    // now only support "com.aliyun.securitysdk.SecurityUtil"
+    @ConfField(mutable = true, masterOnly = false)
+    public static String security_checker_class_name = "";
     //==========================================================================
     //                      end of cloud config
     //==========================================================================
