@@ -170,8 +170,8 @@ public class TabletTest {
             tablet.addReplica(new Replica(replicaId++, pair.first, versionAndSuccessVersion, 0,
                     200000L, 0, 3000L, ReplicaState.NORMAL, lastFailVersion, versionAndSuccessVersion));
         }
-        Assert.assertEquals(tablet.getColocateHealthStatus(100L, new ReplicaAllocation((short) 3),
-                Sets.newHashSet(1L, 2L, 3L)), exceptedTabletStatus);
+        Assert.assertEquals(tablet.getColocateHealth(100L, new ReplicaAllocation((short) 3),
+                Sets.newHashSet(1L, 2L, 3L)).status, exceptedTabletStatus);
     }
 
     @Test

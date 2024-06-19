@@ -30,6 +30,7 @@ import org.apache.doris.catalog.Partition;
 import org.apache.doris.catalog.Partition.PartitionState;
 import org.apache.doris.catalog.Table;
 import org.apache.doris.catalog.Tablet;
+import org.apache.doris.catalog.Tablet.TabletHealth;
 import org.apache.doris.catalog.Tablet.TabletStatus;
 import org.apache.doris.clone.TabletScheduler.AddResult;
 import org.apache.doris.common.Config;
@@ -369,26 +370,25 @@ public class TabletChecker extends MasterDaemon {
                     continue;
                 }
 
-                Pair<TabletStatus, TabletSchedCtx.Priority> statusWithPrio = tablet.getHealthStatusWithPriority(
-                        infoService, partition.getVisibleVersion(),
+                TabletHealth tabletHealth = tablet.getHealth(infoService, partition.getVisibleVersion(),
                         tbl.getPartitionInfo().getReplicaAllocation(partition.getId()), aliveBeIds);
 
-                if (statusWithPrio.first == TabletStatus.HEALTHY) {
+                if (tabletHealth.status == TabletStatus.HEALTHY) {
                     // Only set last status check time when status is healthy.
                     tablet.setLastStatusCheckTime(startTime);
                     continue;
-                } else if (statusWithPrio.first == TabletStatus.UNRECOVERABLE) {
+                } else if (tabletHealth.status == TabletStatus.UNRECOVERABLE) {
                     // This tablet is not recoverable, do not set it into tablet scheduler
                     // all UNRECOVERABLE tablet can be seen from "show proc '/statistic'"
                     counter.unhealthyTabletNum++;
                     continue;
                 } else if (isInPrios) {
-                    statusWithPrio.second = TabletSchedCtx.Priority.VERY_HIGH;
+                    tabletHealth.priority = TabletSchedCtx.Priority.VERY_HIGH;
                     prioPartIsHealthy = false;
                 }
 
                 counter.unhealthyTabletNum++;
-                if (!tablet.readyToBeRepaired(infoService, statusWithPrio.second)) {
+                if (!tablet.readyToBeRepaired(infoService, tabletHealth.priority)) {
                     continue;
                 }
 
@@ -399,8 +399,7 @@ public class TabletChecker extends MasterDaemon {
                         tbl.getPartitionInfo().getReplicaAllocation(partition.getId()),
                         System.currentTimeMillis());
                 // the tablet status will be set again when being scheduled
-                tabletCtx.setTabletStatus(statusWithPrio.first);
-                tabletCtx.setPriority(statusWithPrio.second);
+                tabletCtx.setTabletHealth(tabletHealth);
 
                 AddResult res = tabletScheduler.addTablet(tabletCtx, false /* not force */);
                 if (res == AddResult.LIMIT_EXCEED || res == AddResult.DISABLED) {

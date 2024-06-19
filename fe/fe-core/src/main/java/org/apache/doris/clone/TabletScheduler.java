@@ -34,6 +34,7 @@ import org.apache.doris.catalog.Replica;
 import org.apache.doris.catalog.Replica.ReplicaState;
 import org.apache.doris.catalog.ReplicaAllocation;
 import org.apache.doris.catalog.Tablet;
+import org.apache.doris.catalog.Tablet.TabletHealth;
 import org.apache.doris.catalog.Tablet.TabletStatus;
 import org.apache.doris.catalog.TabletInvertedIndex;
 import org.apache.doris.clone.BackendLoadStatistic.BePathLoadStatPair;
@@ -45,7 +46,6 @@ import org.apache.doris.clone.TabletSchedCtx.Type;
 import org.apache.doris.common.AnalysisException;
 import org.apache.doris.common.Config;
 import org.apache.doris.common.FeConstants;
-import org.apache.doris.common.Pair;
 import org.apache.doris.common.util.DebugPointUtil;
 import org.apache.doris.common.util.MasterDaemon;
 import org.apache.doris.persist.ReplicaPersistInfo;
@@ -481,7 +481,7 @@ public class TabletScheduler extends MasterDaemon {
         tabletCtx.setLastVisitedTime(currentTime);
         stat.counterTabletScheduled.incrementAndGet();
 
-        Pair<TabletStatus, TabletSchedCtx.Priority> statusPair;
+        TabletHealth tabletHealth;
         Database db = Env.getCurrentInternalCatalog().getDbOrException(tabletCtx.getDbId(),
                 s -> new SchedException(Status.UNRECOVERABLE, SubCode.DIAGNOSE_IGNORE,
                         "db " + tabletCtx.getDbId() + " does not exist"));
@@ -530,15 +530,13 @@ public class TabletScheduler extends MasterDaemon {
                 Preconditions.checkState(tabletOrderIdx != -1);
 
                 Set<Long> backendsSet = colocateTableIndex.getTabletBackendsByGroup(groupId, tabletOrderIdx);
-                TabletStatus st = tablet.getColocateHealthStatus(
-                        partition.getVisibleVersion(), replicaAlloc, backendsSet);
-                statusPair = Pair.of(st, Priority.HIGH);
+                tabletHealth = tablet.getColocateHealth(partition.getVisibleVersion(), replicaAlloc, backendsSet);
+                tabletHealth.priority = Priority.HIGH;
                 tabletCtx.setColocateGroupBackendIds(backendsSet);
             } else {
                 replicaAlloc = tbl.getPartitionInfo().getReplicaAllocation(partition.getId());
                 List<Long> aliveBeIds = infoService.getAllBackendIds(true);
-                statusPair = tablet.getHealthStatusWithPriority(
-                        infoService, partition.getVisibleVersion(), replicaAlloc, aliveBeIds);
+                tabletHealth = tablet.getHealth(infoService, partition.getVisibleVersion(), replicaAlloc, aliveBeIds);
             }
 
             if (tabletCtx.getType() != allTabletTypes.get(tabletId)) {
@@ -576,7 +574,7 @@ public class TabletScheduler extends MasterDaemon {
                 }
             }
 
-            if (statusPair.first != TabletStatus.VERSION_INCOMPLETE
+            if (tabletHealth.status != TabletStatus.VERSION_INCOMPLETE
                     && (partition.getState() != PartitionState.NORMAL || tableState != OlapTableState.NORMAL)
                     && tableState != OlapTableState.WAITING_STABLE) {
                 // If table is under ALTER process(before FINISHING), do not allow to add or delete replica.
@@ -585,13 +583,13 @@ public class TabletScheduler extends MasterDaemon {
                 // executing an alter job, but the alter job is in a PENDING state and is waiting for
                 // the table to become stable. In this case, we allow the tablet repair to proceed.
                 throw new SchedException(Status.UNRECOVERABLE, SubCode.DIAGNOSE_IGNORE,
-                        "table is in alter process, but tablet status is " + statusPair.first.name());
+                        "table is in alter process, but tablet status is " + tabletHealth.status.name());
             }
 
-            tabletCtx.setTabletStatus(statusPair.first);
-            if (statusPair.first == TabletStatus.HEALTHY && tabletCtx.getType() == TabletSchedCtx.Type.REPAIR) {
+            tabletCtx.setTabletHealth(tabletHealth);
+            if (tabletHealth.status == TabletStatus.HEALTHY && tabletCtx.getType() == TabletSchedCtx.Type.REPAIR) {
                 throw new SchedException(Status.UNRECOVERABLE, SubCode.DIAGNOSE_IGNORE, "tablet is healthy");
-            } else if (statusPair.first != TabletStatus.HEALTHY
+            } else if (tabletHealth.status != TabletStatus.HEALTHY
                     && tabletCtx.getType() == TabletSchedCtx.Type.BALANCE) {
                 // we select an unhealthy tablet to do balance, which is not right.
                 // so here we stop this task.
@@ -612,7 +610,7 @@ public class TabletScheduler extends MasterDaemon {
             tabletCtx.setSchemaHash(tbl.getSchemaHashByIndexId(idx.getId()));
             tabletCtx.setStorageMedium(tbl.getPartitionInfo().getDataProperty(partition.getId()).getStorageMedium());
 
-            handleTabletByTypeAndStatus(statusPair.first, tabletCtx, batchTask);
+            handleTabletByTypeAndStatus(tabletHealth.status, tabletCtx, batchTask);
         } finally {
             tbl.writeUnlock();
         }
@@ -1590,8 +1588,6 @@ public class TabletScheduler extends MasterDaemon {
         if (tbl == null) {
             return;
         }
-        Pair<TabletStatus, TabletSchedCtx.Priority> statusPair;
-        ReplicaAllocation replicaAlloc = null;
         tbl.readLock();
         try {
             Partition partition = tbl.getPartition(tabletCtx.getPartitionId());
@@ -1609,67 +1605,67 @@ public class TabletScheduler extends MasterDaemon {
                 return;
             }
 
-            boolean isColocateTable = colocateTableIndex.isColocateTable(tbl.getId());
-            if (isColocateTable) {
-                GroupId groupId = colocateTableIndex.getGroup(tbl.getId());
-                if (groupId == null) {
-                    return;
-                }
-                ColocateGroupSchema groupSchema = colocateTableIndex.getGroupSchema(groupId);
-                if (groupSchema == null) {
-                    return;
-                }
-
-                replicaAlloc = groupSchema.getReplicaAlloc();
-                int tabletOrderIdx = tabletCtx.getTabletOrderIdx();
-                if (tabletOrderIdx == -1) {
-                    tabletOrderIdx = idx.getTabletOrderIdx(tablet.getId());
-                }
-                Preconditions.checkState(tabletOrderIdx != -1);
-
-                Set<Long> backendsSet = colocateTableIndex.getTabletBackendsByGroup(groupId, tabletOrderIdx);
-                TabletStatus st = tablet.getColocateHealthStatus(
-                        partition.getVisibleVersion(), replicaAlloc, backendsSet);
-                statusPair = Pair.of(st, Priority.HIGH);
-                tabletCtx.setColocateGroupBackendIds(backendsSet);
-            } else {
-                replicaAlloc = tbl.getPartitionInfo().getReplicaAllocation(partition.getId());
-                List<Long> aliveBeIds = infoService.getAllBackendIds(true);
-                statusPair = tablet.getHealthStatusWithPriority(
-                        infoService, partition.getVisibleVersion(), replicaAlloc, aliveBeIds);
-
-                if (statusPair.second.ordinal() < tabletCtx.getPriority().ordinal()) {
-                    statusPair.second = tabletCtx.getPriority();
-                }
-            }
-
-            if (statusPair.first == TabletStatus.NEED_FURTHER_REPAIR) {
-                // replica is just waiting for finishing txns before furtherRepairWatermarkTxnTd,
-                // no need to add it immediately
-                Replica replica = tablet.getReplicaByBackendId(tabletCtx.getDestBackendId());
-                if (replica != null && replica.getVersion() >= partition.getVisibleVersion()
-                        && replica.getLastFailedVersion() < 0) {
-                    return;
-                }
-            }
+            tryAddRepairTablet(tablet, tabletCtx.getDbId(), tbl, partition, idx, finishedCounter);
         } finally {
             tbl.readUnlock();
         }
+    }
 
-        if (statusPair.first == TabletStatus.HEALTHY) {
+    public void tryAddRepairTablet(Tablet tablet, long dbId, OlapTable table, Partition partition,
+            MaterializedIndex idx, int finishedCounter) {
+        TabletHealth tabletHealth;
+        ReplicaAllocation replicaAlloc;
+        Set<Long> colocateBackendIds = null;
+        boolean isColocateTable = colocateTableIndex.isColocateTable(table.getId());
+        if (isColocateTable) {
+            GroupId groupId = colocateTableIndex.getGroup(table.getId());
+            if (groupId == null) {
+                return;
+            }
+            ColocateGroupSchema groupSchema = colocateTableIndex.getGroupSchema(groupId);
+            if (groupSchema == null) {
+                return;
+            }
+
+            replicaAlloc = groupSchema.getReplicaAlloc();
+            int tabletOrderIdx = idx.getTabletOrderIdx(tablet.getId());
+            if (tabletOrderIdx == -1) {
+                LOG.warn("Unknow colocate tablet order idx: group {}, table {}, partition {}, index {}, tablet {}",
+                        groupId, table.getId(), partition.getId(), idx.getId(), tablet.getId());
+                return;
+            }
+
+            colocateBackendIds = colocateTableIndex.getTabletBackendsByGroup(groupId, tabletOrderIdx);
+            tabletHealth = tablet.getColocateHealth(partition.getVisibleVersion(), replicaAlloc, colocateBackendIds);
+            tabletHealth.priority = Priority.HIGH;
+        } else {
+            replicaAlloc = table.getPartitionInfo().getReplicaAllocation(partition.getId());
+            List<Long> aliveBeIds = infoService.getAllBackendIds(true);
+            tabletHealth = tablet.getHealth(infoService, partition.getVisibleVersion(), replicaAlloc, aliveBeIds);
+        }
+
+        if (tabletHealth.status == TabletStatus.HEALTHY || tabletHealth.status == TabletStatus.UNRECOVERABLE) {
             return;
         }
 
-        TabletSchedCtx newTabletCtx = new TabletSchedCtx(
-                TabletSchedCtx.Type.REPAIR, tabletCtx.getDbId(), tabletCtx.getTblId(),
-                tabletCtx.getPartitionId(), tabletCtx.getIndexId(), tabletCtx.getTabletId(),
-                replicaAlloc, System.currentTimeMillis());
+        if (tabletHealth.status == TabletStatus.NEED_FURTHER_REPAIR && finishedCounter > 0) {
+            // replica is just waiting for finishing txns before furtherRepairWatermarkTxnTd,
+            // no need to re add it immediately, can wait a little
+            Replica replica = tablet.getReplicaById(tabletHealth.needFurtherRepairReplicaId);
+            if (replica != null && replica.getVersion() >= partition.getVisibleVersion()
+                    && replica.getLastFailedVersion() < 0) {
+                return;
+            }
+        }
 
-        newTabletCtx.setTabletStatus(statusPair.first);
-        newTabletCtx.setPriority(statusPair.second);
-        newTabletCtx.setFinishedCounter(finishedCounter);
+        TabletSchedCtx tabletCtx = new TabletSchedCtx(TabletSchedCtx.Type.REPAIR, dbId, table.getId(),
+                partition.getId(), idx.getId(), tablet.getId(), replicaAlloc, System.currentTimeMillis());
 
-        addTablet(newTabletCtx, false);
+        tabletCtx.setTabletHealth(tabletHealth);
+        tabletCtx.setFinishedCounter(finishedCounter);
+        tabletCtx.setColocateGroupBackendIds(colocateBackendIds);
+
+        addTablet(tabletCtx, false);
     }
 
     private void releaseTabletCtx(TabletSchedCtx tabletCtx, TabletSchedCtx.State state, boolean resetReplicaState) {
@@ -1882,10 +1878,10 @@ public class TabletScheduler extends MasterDaemon {
                     cancelTablets.add(tabletCtx);
                     stat.counterCloneTaskTimeout.incrementAndGet();
                 } else if (destBeId > 0 && !aliveBeIds.contains(destBeId)) {
-                    tabletCtx.setErrMsg("dest be " + destBeId + " is dead" );
+                    tabletCtx.setErrMsg("dest be " + destBeId + " is dead");
                     cancelTablets.add(tabletCtx);
                 } else if (srcBeId > 0 && !aliveBeIds.contains(srcBeId)) {
-                    tabletCtx.setErrMsg("src be " + srcBeId + " is dead" );
+                    tabletCtx.setErrMsg("src be " + srcBeId + " is dead");
                     cancelTablets.add(tabletCtx);
                 }
             }

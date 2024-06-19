@@ -1008,6 +1008,12 @@ public class Config extends ConfigBase {
     public static int tablet_further_repair_max_times = 5;
 
     /**
+     * if tablet loaded txn failed recently, it will get higher priority to repair.
+     */
+    @ConfField(mutable = true, masterOnly = true)
+    public static long tablet_recent_load_failed_second = 30 * 60;
+
+    /**
      * publish version queue's size in be, report it to fe,
      * if publish task in be exceed direct_publish_limit_number,
      * fe will direct publish task
