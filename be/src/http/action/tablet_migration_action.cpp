@@ -74,7 +74,14 @@ void TabletMigrationAction::handle(HttpRequest* req) {
                         }
                         _migration_tasks[current_task] = "submitted";
                     }
-                    auto st = _migration_thread_pool->submit_func([&, dest_disk, current_task]() {
+                    auto st = _migration_thread_pool->submit_func([this, current_task]() {
+                        TabletSharedPtr tablet;
+                        DataDir* dest_store;
+                        if (!_check_migrate_request(current_task._tablet_id,
+                                                    current_task._schema_hash,
+                                                    current_task._dest_disk, tablet, &dest_store)) {
+                            return;
+                        }
                         {
                             std::unique_lock<std::mutex> lock(_migration_status_mutex);
                             _migration_tasks[current_task] = "running";
