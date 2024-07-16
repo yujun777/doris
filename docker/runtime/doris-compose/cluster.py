@@ -625,7 +625,10 @@ class Cluster(object):
         os.makedirs(LOCAL_DORIS_PATH, exist_ok=True)
         lock_file = os.path.join(LOCAL_DORIS_PATH, "lock")
         if not os.path.exists(lock_file):
-            with open(os.open(path=lock_file, mode=0o777), "w") as f:
+            with open(
+                    os.open(path=lock_file,
+                            flags=(os.O_WRONLY | os.O_CREAT),
+                            mode=0o777), "w") as f:
                 f.write("This is autogen lock file")
         with filelock.FileLock(lock_file):
             subnet = gen_subnet_prefix16()
