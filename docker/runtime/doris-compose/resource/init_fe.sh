@@ -83,6 +83,7 @@ fe_daemon() {
 
 start_cloud_fe() {
     if [ -f "$REGISTER_FILE" ]; then
+        fe_daemon &
         bash $DORIS_HOME/bin/start_fe.sh --daemon
         return
     fi
@@ -144,11 +145,12 @@ start_cloud_fe() {
     fi
 
     touch $REGISTER_FILE
+
+    fe_daemon &
+    bash $DORIS_HOME/bin/start_fe.sh --daemon
+
     if [ "$MY_ID" == "1" ]; then
         echo $MY_IP >$MASTER_FE_IP_FILE
-        bash $DORIS_HOME/bin/start_fe.sh --daemon
-    else
-        bash $DORIS_HOME/bin/start_fe.sh --helper $MASTER_FE_IP:$FE_EDITLOG_PORT --daemon
     fi
 }
 

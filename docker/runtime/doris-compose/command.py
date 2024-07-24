@@ -400,6 +400,7 @@ class UpCommand(Command):
 
         if args.be_cluster and cluster.is_cloud:
             cluster.be_cluster = args.be_cluster
+        cluster.fe_follower = fe_follower
 
         _, related_nodes, _ = get_ids_related_nodes(cluster, args.fe_id,
                                                     args.be_id, args.ms_id,
