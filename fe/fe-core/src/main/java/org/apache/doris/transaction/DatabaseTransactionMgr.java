@@ -439,34 +439,15 @@ public class DatabaseTransactionMgr {
         readLock();
         try {
             transactionState = unprotectedGetTransactionState(transactionId);
+            checkTransactionStateBeforePreCommit(transactionId, transactionState);
+        } catch (TransactionCommitFailedException e) {
+            if (e.getErrorCode() == InternalErrorCode.ALREADY_DONE_ERR) {
+                LOG.info("already pre-commit transaction, {}", e.getMessage());
+                return;
+            }
+            throw e;
         } finally {
             readUnlock();
-        }
-        if (transactionState == null
-                || transactionState.getTransactionStatus() == TransactionStatus.ABORTED) {
-            throw new TransactionCommitFailedException(
-                    transactionState == null ? "transaction not found" : transactionState.getReason());
-        }
-
-        if (transactionState.getTransactionStatus() == TransactionStatus.VISIBLE) {
-            if (LOG.isDebugEnabled()) {
-                LOG.debug("transaction is already visible: {}", transactionId);
-            }
-            throw new TransactionCommitFailedException("transaction is already visible");
-        }
-
-        if (transactionState.getTransactionStatus() == TransactionStatus.COMMITTED) {
-            if (LOG.isDebugEnabled()) {
-                LOG.debug("transaction is already committed: {}", transactionId);
-            }
-            throw new TransactionCommitFailedException("transaction is already committed");
-        }
-
-        if (transactionState.getTransactionStatus() == TransactionStatus.PRECOMMITTED) {
-            if (LOG.isDebugEnabled()) {
-                LOG.debug("transaction is already pre-committed: {}", transactionId);
-            }
-            return;
         }
 
         Set<Long> errorReplicaIds = Sets.newHashSet();
@@ -476,8 +457,20 @@ public class DatabaseTransactionMgr {
         checkCommitStatus(tableList, transactionState, tabletCommitInfos, txnCommitAttachment, errorReplicaIds,
                           tableToPartition, totalInvolvedBackends);
 
-        unprotectedPreCommitTransaction2PC(transactionState, errorReplicaIds, tableToPartition,
-                totalInvolvedBackends, db);
+        writeLock();
+        try {
+            checkTransactionStateBeforePreCommit(transactionId, transactionState);
+            unprotectedPreCommitTransaction2PC(transactionState, errorReplicaIds, tableToPartition,
+                    totalInvolvedBackends, db);
+        } catch (TransactionCommitFailedException e) {
+            if (e.getErrorCode() == InternalErrorCode.ALREADY_DONE_ERR) {
+                LOG.info("already pre-commit transaction, {}", e.getMessage());
+                return;
+            }
+            throw e;
+        } finally {
+            writeUnlock();
+        }
         LOG.info("transaction:[{}] successfully pre-committed", transactionState);
     }
 
@@ -680,6 +673,38 @@ public class DatabaseTransactionMgr {
         return writeDetail;
     }
 
+    private void checkTransactionStateBeforePreCommit(long transactionId, TransactionState transactionState)
+            throws TransactionCommitFailedException {
+        if (transactionState == null
+                || transactionState.getTransactionStatus() == TransactionStatus.ABORTED) {
+            throw new TransactionCommitFailedException(
+                    transactionState == null ? "transaction [" + transactionId +"] not found"
+                            : transactionState.getReason());
+        }
+
+        if (transactionState.getTransactionStatus() == TransactionStatus.VISIBLE) {
+            if (LOG.isDebugEnabled()) {
+                LOG.debug("transaction is already visible: {}", transactionId);
+            }
+            throw new TransactionCommitFailedException("transaction [" + transactionId + "] is already visible");
+        }
+
+        if (transactionState.getTransactionStatus() == TransactionStatus.COMMITTED) {
+            if (LOG.isDebugEnabled()) {
+                LOG.debug("transaction is already committed: {}", transactionId);
+            }
+            throw new TransactionCommitFailedException("transaction [" + transactionId + "] is already committed");
+        }
+
+        if (transactionState.getTransactionStatus() == TransactionStatus.PRECOMMITTED) {
+            if (LOG.isDebugEnabled()) {
+                LOG.debug("transaction is already pre-committed: {}", transactionId);
+            }
+            throw new TransactionCommitFailedException(InternalErrorCode.ALREADY_DONE_ERR,
+                    "transaction [" + transactionId + "] is already pre-committed");
+        }
+    }
+
     private void checkTransactionStateBeforeCommit(Database db, List<Table> tableList, long transactionId,
             boolean is2PC, TransactionState transactionState)
             throws TransactionCommitFailedException {
@@ -705,8 +730,10 @@ public class DatabaseTransactionMgr {
             if (is2PC) {
                 throw new TransactionCommitFailedException("transaction [" + transactionId
                         + "] is already visible, not pre-committed.");
+            } else {
+                throw new TransactionCommitFailedException(InternalErrorCode.ALREADY_DONE_ERR,
+                        "transaction [" + transactionId + "] is already visible.");
             }
-            return;
         }
         if (transactionState.getTransactionStatus() == TransactionStatus.COMMITTED) {
             if (LOG.isDebugEnabled()) {
@@ -715,8 +742,10 @@ public class DatabaseTransactionMgr {
             if (is2PC) {
                 throw new TransactionCommitFailedException("transaction [" + transactionId
                         + "] is already committed, not pre-committed.");
+            } else {
+                throw new TransactionCommitFailedException(InternalErrorCode.ALREADY_DONE_ERR,
+                        "transaction [" + transactionId + "] is already committed.");
             }
-            return;
         }
 
         if (is2PC && transactionState.getTransactionStatus() == TransactionStatus.PREPARE) {
@@ -757,6 +786,35 @@ public class DatabaseTransactionMgr {
         }
     }
 
+    private void checkTransactionStateBeforeAbort(long transactionId, TransactionState transactionState)
+            throws TransactionException {
+        if (transactionState == null) {
+            throw new TransactionException("transaction [" + transactionId +"] not found");
+        }
+
+        if (transactionState.getTransactionStatus() == TransactionStatus.ABORTED) {
+            if (LOG.isDebugEnabled()) {
+                LOG.debug("transaction is already aborted: {}", transactionId);
+            }
+            throw new TransactionException(InternalErrorCode.ALREADY_DONE_ERR,
+                    "transaction [" + transactionId + "] is already aborted");
+        }
+
+        if (transactionState.getTransactionStatus() == TransactionStatus.VISIBLE) {
+            if (LOG.isDebugEnabled()) {
+                LOG.debug("transaction is already visible: {}", transactionId);
+            }
+            throw new TransactionException("transaction [" + transactionId + "] is already visible");
+        }
+
+        if (transactionState.getTransactionStatus() == TransactionStatus.COMMITTED) {
+            if (LOG.isDebugEnabled()) {
+                LOG.debug("transaction is already committed: {}", transactionId);
+            }
+            throw new TransactionException("transaction [" + transactionId + "] is already committed");
+        }
+    }
+
     /**
      * commit transaction process as follows：
      * 1. validate whether `Load` is cancelled
@@ -776,11 +834,16 @@ public class DatabaseTransactionMgr {
         readLock();
         try {
             transactionState = unprotectedGetTransactionState(transactionId);
+            checkTransactionStateBeforeCommit(db, tableList, transactionId, is2PC, transactionState);
+        } catch (TransactionCommitFailedException e) {
+            if (e.getErrorCode() == InternalErrorCode.ALREADY_DONE_ERR) {
+                LOG.info("already commit transaction, {}", e.getMessage());
+                return;
+            }
+            throw e;
         } finally {
             readUnlock();
         }
-
-        checkTransactionStateBeforeCommit(db, tableList, transactionId, is2PC, transactionState);
 
         Set<Long> errorReplicaIds = Sets.newHashSet();
         Set<Long> totalInvolvedBackends = Sets.newHashSet();
@@ -796,6 +859,7 @@ public class DatabaseTransactionMgr {
         boolean txnOperated = false;
         writeLock();
         try {
+            checkTransactionStateBeforeCommit(db, tableList, transactionId, is2PC, transactionState);
             if (is2PC) {
                 unprotectedCommitTransaction2PC(transactionState, db);
             } else {
@@ -803,6 +867,12 @@ public class DatabaseTransactionMgr {
                         tableToPartition, totalInvolvedBackends, db);
             }
             txnOperated = true;
+        } catch (TransactionCommitFailedException e) {
+            if (e.getErrorCode() == InternalErrorCode.ALREADY_DONE_ERR) {
+                LOG.info("already commit transaction, {}", e.getMessage());
+                return;
+            }
+            throw e;
         } finally {
             writeUnlock();
             // after state transform
@@ -827,6 +897,13 @@ public class DatabaseTransactionMgr {
         readLock();
         try {
             transactionState = unprotectedGetTransactionState(transactionId);
+            checkTransactionStateBeforeCommit(db, tableList, transactionId, false, transactionState);
+        } catch (TransactionCommitFailedException e) {
+            if (e.getErrorCode() == InternalErrorCode.ALREADY_DONE_ERR) {
+                LOG.info("already commit transaction, {}", e.getMessage());
+                return;
+            }
+            throw e;
         } finally {
             readUnlock();
         }
@@ -835,8 +912,6 @@ public class DatabaseTransactionMgr {
             throw new TabletQuorumFailedException(transactionId,
                     "DebugPoint: DatabaseTransactionMgr.commitTransaction.failed");
         }
-
-        checkTransactionStateBeforeCommit(db, tableList, transactionId, false, transactionState);
 
         // error replica may be duplicated for different sub transaction, but it's ok
         Set<Long> errorReplicaIds = Sets.newHashSet();
@@ -861,9 +936,16 @@ public class DatabaseTransactionMgr {
         boolean txnOperated = false;
         writeLock();
         try {
+            checkTransactionStateBeforeCommit(db, tableList, transactionId, false, transactionState);
             unprotectedCommitTransaction(transactionState, errorReplicaIds, subTxnToPartition, totalInvolvedBackends,
                     subTransactionStates, db);
             txnOperated = true;
+        } catch (TransactionCommitFailedException e) {
+            if (e.getErrorCode() == InternalErrorCode.ALREADY_DONE_ERR) {
+                LOG.info("already commit transaction, {}", e.getMessage());
+                return;
+            }
+            throw e;
         } finally {
             writeUnlock();
             // after state transform
@@ -1696,15 +1778,19 @@ public class DatabaseTransactionMgr {
                     + " ignore abort operation", transactionId);
             return;
         }
+
         TransactionState transactionState = null;
         readLock();
         try {
             transactionState = idToRunningTransactionState.get(transactionId);
+            checkTransactionStateBeforeAbort(transactionId, transactionState);
+        } catch (TransactionException e) {
+            if (e.getErrorCode() == InternalErrorCode.ALREADY_DONE_ERR) {
+                LOG.info("already aborted txn: {}", e.getMessage());
+            }
+            throw e;
         } finally {
             readUnlock();
-        }
-        if (transactionState == null) {
-            throw new TransactionNotFoundException("transaction not found", transactionId);
         }
 
         // update transaction state extra if exists
@@ -1717,7 +1803,13 @@ public class DatabaseTransactionMgr {
         boolean txnOperated = false;
         writeLock();
         try {
+            checkTransactionStateBeforeAbort(transactionId, transactionState);
             txnOperated = unprotectAbortTransaction(transactionId, reason);
+        } catch (TransactionException e) {
+            if (e.getErrorCode() == InternalErrorCode.ALREADY_DONE_ERR) {
+                LOG.info("already aborted txn: {}", e.getMessage());
+            }
+            throw e;
         } finally {
             writeUnlock();
             transactionState.afterStateTransform(TransactionStatus.ABORTED, txnOperated, reason);

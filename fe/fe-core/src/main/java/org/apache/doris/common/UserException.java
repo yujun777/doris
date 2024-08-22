@@ -66,6 +66,10 @@ public class UserException extends Exception {
         return errorCode;
     }
 
+    public void setErrorCode(InternalErrorCode errorCode) {
+        return this.errorCode = errorCode;
+    }
+
     public ErrorCode getMysqlErrorCode() {
         return mysqlErrorCode;
     }
