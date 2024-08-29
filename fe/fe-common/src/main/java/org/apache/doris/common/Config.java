@@ -1203,6 +1203,9 @@ public class Config extends ConfigBase {
     @ConfField(mutable = true, masterOnly = true)
     public static int report_queue_size = 100;
 
+    @ConfField(mutable = true, masterOnly = true)
+    public static int handle_report_table_batch_size = 1;
+
     /**
      * If set to true, metric collector will be run as a daemon timer to collect metrics at fix interval
      */
