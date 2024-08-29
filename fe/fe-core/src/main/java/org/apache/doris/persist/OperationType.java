@@ -216,6 +216,7 @@ public class OperationType {
     // modify database/table/tablet/replica meta
     public static final short OP_SET_REPLICA_VERSION = 141;
     public static final short OP_COLOCATE_MOD_REPLICA_ALLOC = 142;
+    public static final short OP_BATCH_MODIFY_REPLICA = 143;
 
     // routine load 200
     public static final short OP_CREATE_ROUTINE_LOAD_JOB = 200;

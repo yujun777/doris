@@ -207,6 +207,7 @@ import org.apache.doris.persist.AlterMTMV;
 import org.apache.doris.persist.AutoIncrementIdUpdateLog;
 import org.apache.doris.persist.BackendReplicasInfo;
 import org.apache.doris.persist.BackendTabletsInfo;
+import org.apache.doris.persist.BatchModifyReplicasInfo;
 import org.apache.doris.persist.BinlogGcInfo;
 import org.apache.doris.persist.CleanQueryStatsInfo;
 import org.apache.doris.persist.DropPartitionInfo;
@@ -4126,6 +4127,10 @@ public class Env {
 
     public void replayDeleteReplica(ReplicaPersistInfo info) throws MetaNotFoundException {
         getInternalCatalog().replayDeleteReplica(info);
+    }
+
+    public void replayBatchModifyReplicasInfo(BatchModifyReplicasInfo info) throws MetaNotFoundException {
+        getInternalCatalog().replayBatchModifyReplicasInfo(info);
     }
 
     public void replayAddFrontend(Frontend fe) {

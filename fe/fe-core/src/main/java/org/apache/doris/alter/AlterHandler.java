@@ -35,6 +35,7 @@ import org.apache.doris.common.MetaNotFoundException;
 import org.apache.doris.common.UserException;
 import org.apache.doris.common.util.MasterDaemon;
 import org.apache.doris.common.util.TimeUtils;
+import org.apache.doris.persist.BatchModifyReplicasInfo;
 import org.apache.doris.persist.RemoveAlterJobV2OperationLog;
 import org.apache.doris.persist.ReplicaPersistInfo;
 import org.apache.doris.task.AlterReplicaTask;
@@ -247,12 +248,12 @@ public abstract class AlterHandler extends MasterDaemon {
             }
 
             if (versionChanged) {
-                ReplicaPersistInfo info = ReplicaPersistInfo.createForClone(task.getDbId(), task.getTableId(),
+                ReplicaPersistInfo info = ReplicaPersistInfo.createForUpdate(task.getDbId(), task.getTableId(),
                         task.getPartitionId(), task.getIndexId(), task.getTabletId(), task.getBackendId(),
                         replica.getId(), replica.getVersion(), -1,
                         replica.getDataSize(), replica.getRemoteDataSize(), replica.getRowCount(),
-                        replica.getLastFailedVersion(), replica.getLastSuccessVersion());
-                Env.getCurrentEnv().getEditLog().logUpdateReplica(info);
+                        replica.getLastFailedVersion(), replica.getLastSuccessVersion(), replica.isBad());
+                Env.getCurrentEnv().getEditLog().logBatchModifyReplica(new BatchModifyReplicasInfo(info));
             }
 
             LOG.info("after handle alter task tablet: {}, replica: {}", task.getSignature(), replica);

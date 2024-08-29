@@ -49,6 +49,7 @@ import org.apache.doris.common.FeConstants;
 import org.apache.doris.common.UserException;
 import org.apache.doris.common.util.DebugPointUtil;
 import org.apache.doris.common.util.MasterDaemon;
+import org.apache.doris.persist.BatchModifyReplicasInfo;
 import org.apache.doris.persist.ReplicaPersistInfo;
 import org.apache.doris.resource.Tag;
 import org.apache.doris.system.Backend;
@@ -1270,7 +1271,7 @@ public class TabletScheduler extends MasterDaemon {
                 tabletCtx.getTabletId(),
                 replica.getBackendIdWithoutException());
 
-        Env.getCurrentEnv().getEditLog().logDeleteReplica(info);
+        Env.getCurrentEnv().getEditLog().logBatchModifyReplica(new BatchModifyReplicasInfo(info));
 
         LOG.info("delete replica. tablet id: {}, backend id: {}. reason: {}, force: {}",
                 tabletCtx.getTabletId(), replica.getBackendIdWithoutException(), reason, force);

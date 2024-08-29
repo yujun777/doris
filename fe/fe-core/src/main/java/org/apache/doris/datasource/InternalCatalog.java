@@ -151,6 +151,7 @@ import org.apache.doris.nereids.trees.plans.commands.info.DropMTMVInfo;
 import org.apache.doris.nereids.trees.plans.commands.info.TableNameInfo;
 import org.apache.doris.persist.AlterDatabasePropertyInfo;
 import org.apache.doris.persist.AutoIncrementIdUpdateLog;
+import org.apache.doris.persist.BatchModifyReplicasInfo;
 import org.apache.doris.persist.ColocatePersistInfo;
 import org.apache.doris.persist.DatabaseInfo;
 import org.apache.doris.persist.DropDbInfo;
@@ -1139,12 +1140,15 @@ public class InternalCatalog implements CatalogIf<Database> {
         Tablet tablet = materializedIndex.getTablet(info.getTabletId());
         Replica replica = tablet.getReplicaById(info.getReplicaId());
         Preconditions.checkNotNull(replica, info);
+        replica.setBad(info.isBad());
+        if (info.isBad()) {
+            return;
+        }
         replica.updateVersionWithFailed(info.getVersion(), info.getLastFailedVersion(),
                 info.getLastSuccessVersion());
         replica.setDataSize(info.getDataSize());
         replica.setRemoteDataSize(info.getRemoteDataSize());
         replica.setRowCount(info.getRowCount());
-        replica.setBad(false);
     }
 
     public void replayAddReplica(ReplicaPersistInfo info) throws MetaNotFoundException {
@@ -1184,6 +1188,25 @@ public class InternalCatalog implements CatalogIf<Database> {
             unprotectDeleteReplica(olapTable, info);
         } finally {
             olapTable.writeUnlock();
+        }
+    }
+
+    public void replayBatchModifyReplicasInfo(BatchModifyReplicasInfo info) throws MetaNotFoundException {
+        for (ReplicaPersistInfo replica : info.getReplicas()) {
+            switch (replica.getOpType()) {
+                case ADD:
+                    replayAddReplica(replica);
+                    break;
+                case DELETE:
+                    replayDeleteReplica(replica);
+                    break;
+                case UPDATE:
+                    replayUpdateReplica(replica);
+                    break;
+                default:
+                    throw new MetaNotFoundException("not implement BatchModifyReplicasInfo's replay function "
+                        + "with operation type " + replica.getOpType());
+            }
         }
     }
 

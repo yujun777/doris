@@ -415,6 +415,11 @@ public class EditLog {
                     env.replayDeleteReplica(info);
                     break;
                 }
+                case OperationType.OP_BATCH_MODIFY_REPLICA: {
+                    BatchModifyReplicasInfo info = (BatchModifyReplicasInfo) journal.getData();
+                    env.replayBatchModifyReplicasInfo(info);
+                    break;
+                }
                 case OperationType.OP_ADD_BACKEND: {
                     Backend be = (Backend) journal.getData();
                     Env.getCurrentSystemInfo().replayAddBackend(be);
@@ -1500,16 +1505,8 @@ public class EditLog {
         logEdit(OperationType.OP_FINISH_DELETE, info);
     }
 
-    public void logAddReplica(ReplicaPersistInfo info) {
-        logEdit(OperationType.OP_ADD_REPLICA, info);
-    }
-
-    public void logUpdateReplica(ReplicaPersistInfo info) {
-        logEdit(OperationType.OP_UPDATE_REPLICA, info);
-    }
-
-    public void logDeleteReplica(ReplicaPersistInfo info) {
-        logEdit(OperationType.OP_DELETE_REPLICA, info);
+    public void logBatchModifyReplica(BatchModifyReplicasInfo info) {
+        logEdit(OperationType.OP_BATCH_MODIFY_REPLICA, info);
     }
 
     public void logTimestamp(Timestamp stamp) {
@@ -1726,11 +1723,6 @@ public class EditLog {
 
     public void logDropEncryptKey(EncryptKeySearchDesc desc) {
         logEdit(OperationType.OP_DROP_ENCRYPTKEY, desc);
-    }
-
-    @Deprecated
-    public void logBackendTabletsInfo(BackendTabletsInfo backendTabletsInfo) {
-        logEdit(OperationType.OP_BACKEND_TABLETS_INFO, backendTabletsInfo);
     }
 
     public void logBackendReplicasInfo(BackendReplicasInfo backendReplicasInfo) {

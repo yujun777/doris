@@ -74,6 +74,7 @@ import org.apache.doris.persist.BackendTabletsInfo;
 import org.apache.doris.persist.BarrierLog;
 import org.apache.doris.persist.BatchDropInfo;
 import org.apache.doris.persist.BatchModifyPartitionsInfo;
+import org.apache.doris.persist.BatchModifyReplicasInfo;
 import org.apache.doris.persist.BatchRemoveTransactionsOperation;
 import org.apache.doris.persist.BatchRemoveTransactionsOperationV2;
 import org.apache.doris.persist.BinlogGcInfo;
@@ -349,6 +350,11 @@ public class JournalEntity implements Writable {
             case OperationType.OP_DELETE_REPLICA:
             case OperationType.OP_CLEAR_ROLLUP_INFO: {
                 data = ReplicaPersistInfo.read(in);
+                isRead = true;
+                break;
+            }
+            case OperationType.OP_BATCH_MODIFY_REPLICA: {
+                data = BatchModifyReplicasInfo.read(in);
                 isRead = true;
                 break;
             }
