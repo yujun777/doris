@@ -92,6 +92,9 @@ public class Backend implements Writable {
     @SerializedName("isAlive")
     private AtomicBoolean isAlive;
 
+    // make sure init lastStartTimeForAbortCoordTxn is different with lastStartTime
+    private long lastStartTimeForAbortCoordTxn = -1000L;
+
     @SerializedName("isDecommissioned")
     private AtomicBoolean isDecommissioned;
 
@@ -383,6 +386,14 @@ public class Backend implements Writable {
 
     public void setLastStartTime(long currentTime) {
         this.lastStartTime = currentTime;
+    }
+
+    public long getLastStartTimeForAbortCoordTxn() {
+        return this.lastStartTimeForAbortCoordTxn;
+    }
+
+    public void setLastStartTimeForAbortCoordTxn(long currentTime) {
+        this.lastStartTimeForAbortCoordTxn = currentTime;
     }
 
     public int getCputCores() {

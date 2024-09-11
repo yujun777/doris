@@ -193,9 +193,11 @@ public class HeartbeatMgr extends MasterDaemon {
                         // invalid all connections cached in ClientPool
                         ClientPool.backendPool.clearPool(new TNetworkAddress(be.getHost(), be.getBePort()));
                         if (!isReplay && System.currentTimeMillis() - be.getLastUpdateMs()
-                                >= Config.abort_txn_after_lost_heartbeat_time_second * 1000L) {
+                                >= Config.abort_txn_after_lost_heartbeat_time_second * 1000L
+                                && be.getLastStartTime() != be.getLastStartTimeForAbortCoordTxn()) {
                             Env.getCurrentGlobalTransactionMgr().abortTxnWhenCoordinateBeDown(
-                                    be.getId(), be.getHost(), 100);
+                                    be.getId(), be.getHost(), Long.MAX_VALUE);
+                            be.setLastStartTimeForAbortCoordTxn(be.getLastStartTime());
                         }
                     }
                     return isChanged;

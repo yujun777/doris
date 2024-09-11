@@ -1356,10 +1356,19 @@ public class CloudGlobalTransactionMgr implements GlobalTransactionMgrIface {
 
     @Override
     public void abortTxnWhenCoordinateBeRestart(long coordinateBeId, String coordinateHost, long beStartTime) {
+        abortCoordinateTxnEarlierThen(coordinateBeId, coordinateHost, beStartTime);
+    }
+
+    @Override
+    public void abortTxnWhenCoordinateBeDown(long coordinateBeId, String coordinateHost, int limit) {
+        abortCoordinateTxnEarlierThen(coordinateBeId, coordinateHost, Long.MAX_VALUE);
+    }
+
+    private void abortCoordinateTxnEarlierThen(long coordinateBeId, String coordinateHost, long startTime) {
         AbortTxnWithCoordinatorRequest.Builder builder = AbortTxnWithCoordinatorRequest.newBuilder();
         builder.setIp(coordinateHost);
         builder.setId(coordinateBeId);
-        builder.setStartTime(beStartTime);
+        builder.setStartTime(startTime);
         final AbortTxnWithCoordinatorRequest request = builder.build();
         AbortTxnWithCoordinatorResponse response = null;
         try {
@@ -1369,11 +1378,6 @@ public class CloudGlobalTransactionMgr implements GlobalTransactionMgrIface {
         } catch (RpcException e) {
             LOG.warn("Abort txn on coordinate BE {} failed, msg={}", coordinateHost, e.getMessage());
         }
-    }
-
-    @Override
-    public void abortTxnWhenCoordinateBeDown(long coordinateBeId, String coordinateHost, int limit) {
-        // do nothing in cloud mode
     }
 
     @Override
