@@ -527,7 +527,12 @@ public class DeployManager extends MasterDaemon {
                     break;
                 case BACKEND:
                 case BACKEND_CN:
+                    Backend be = Env.getCurrentSystemInfo().getBackendWithHeartbeatPort(localHost, localPort);
                     Env.getCurrentSystemInfo().dropBackend(localHost, localPort);
+                    if (be != null) {
+                        Env.getCurrentGlobalTransactionMgr().abortTxnWhenCoordinateBeDown(
+                                be.getId(), be.getHost(), Integer.MAX_VALUE);
+                    }
                     break;
                 case BROKER:
                     env.getBrokerMgr().dropBrokers(getBrokerName(), Lists.newArrayList(Pair.of(localHost, localPort)));

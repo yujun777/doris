@@ -570,7 +570,11 @@ public class RoutineLoadManager implements Writable {
                 tags = getTagsFromReplicaAllocation(job.getDbId(), job.getTableId());
             }
         }
-        BeSelectionPolicy policy = new BeSelectionPolicy.Builder().needLoadAvailable().addTags(tags).build();
+        BeSelectionPolicy policy = new BeSelectionPolicy.Builder()
+                .needLoadAvailable()
+                .needScheduleAvailable()
+                .addTags(tags)
+                .build();
         return Env.getCurrentSystemInfo().selectBackendIdsByPolicy(policy, -1 /* as many as possible */);
     }
 

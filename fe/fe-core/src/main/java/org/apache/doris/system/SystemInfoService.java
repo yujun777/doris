@@ -230,25 +230,30 @@ public class SystemInfoService {
         MetricRepo.generateBackendsTabletMetrics();
     }
 
-    public void dropBackends(List<HostInfo> hostInfos) throws DdlException {
+    public void dropBackends(List<HostInfo> hostInfos, List<Backend> succDropBackends) throws DdlException {
         for (HostInfo hostInfo : hostInfos) {
             // check is already exist
-            if (getBackendWithHeartbeatPort(hostInfo.getHost(), hostInfo.getPort()) == null) {
+            Backend backend = getBackendWithHeartbeatPort(hostInfo.getHost(), hostInfo.getPort());
+            if (backend == null) {
                 String backendIdentifier = NetUtils
                         .getHostPortInAccessibleFormat(hostInfo.getHost(), hostInfo.getPort());
                 throw new DdlException("backend does not exists[" + backendIdentifier + "]");
             }
             dropBackend(hostInfo.getHost(), hostInfo.getPort());
+            succDropBackends.add(backend);
         }
     }
 
-    public void dropBackendsByIds(List<String> ids) throws DdlException {
+    public void dropBackendsByIds(List<String> ids, List<Backend> succDropBackends) throws DdlException {
 
         for (String id : ids) {
-            if (getBackend(Long.parseLong(id)) == null) {
+            long beId = Long.parseLong(id);
+            Backend backend = getBackend(beId);
+            if (backend == null) {
                 throw new DdlException("backend does not exists[" + id + "]");
             }
-            dropBackend(Long.parseLong(id));
+            dropBackend(beId);
+            succDropBackends.add(backend);
         }
 
     }

@@ -625,7 +625,15 @@ public class NodeAction extends RestBaseController {
                         Tag.DEFAULT_BACKEND_TAG);
                 currentSystemInfo.addBackends(hostInfos, tagMap);
             } else if ("DROP".equals(action)) {
-                currentSystemInfo.dropBackends(hostInfos);
+                List<Backend> succDropBackends = Lists.newArrayList();
+                try {
+                    currentSystemInfo.dropBackends(hostInfos, succDropBackends);
+                } finally {
+                    for (Backend backend : succDropBackends) {
+                        Env.getCurrentGlobalTransactionMgr().abortTxnWhenCoordinateBeDown(
+                                backend.getId(), backend.getHost(), Integer.MAX_VALUE);
+                    }
+                }
             } else if ("DECOMMISSION".equals(action)) {
                 ImmutableMap<Long, Backend> backendsInCluster = currentSystemInfo.getAllBackendsByAllCluster();
                 backendsInCluster.forEach((k, v) -> {

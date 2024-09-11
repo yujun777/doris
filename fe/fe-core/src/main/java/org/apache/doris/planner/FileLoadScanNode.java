@@ -198,6 +198,7 @@ public class FileLoadScanNode extends FileScanNode {
         BeSelectionPolicy policy = new BeSelectionPolicy.Builder()
                 .needQueryAvailable()
                 .needLoadAvailable()
+                .needScheduleAvailable()
                 .build();
         FederationBackendPolicy localBackendPolicy = new FederationBackendPolicy();
         localBackendPolicy.init(policy);

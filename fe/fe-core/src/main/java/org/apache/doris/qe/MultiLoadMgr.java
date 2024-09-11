@@ -89,7 +89,10 @@ public class MultiLoadMgr {
             if (infoMap.containsKey(multiLabel)) {
                 throw new LabelAlreadyUsedException(label);
             }
-            BeSelectionPolicy policy = new BeSelectionPolicy.Builder().needLoadAvailable().build();
+            BeSelectionPolicy policy = new BeSelectionPolicy.Builder()
+                    .needScheduleAvailable()
+                    .needLoadAvailable()
+                    .build();
             List<Long> backendIds = Env.getCurrentSystemInfo().selectBackendIdsByPolicy(policy, 1);
             if (backendIds.isEmpty()) {
                 throw new DdlException(SystemInfoService.NO_BACKEND_LOAD_AVAILABLE_MSG + " policy: " + policy);

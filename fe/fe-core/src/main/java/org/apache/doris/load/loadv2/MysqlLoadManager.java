@@ -449,7 +449,10 @@ public class MysqlLoadManager {
         if (Config.isCloudMode()) {
             backend = StreamLoadHandler.selectBackend(ConnectContext.get().getCloudCluster());
         } else {
-            BeSelectionPolicy policy = new BeSelectionPolicy.Builder().needLoadAvailable().build();
+            BeSelectionPolicy policy = new BeSelectionPolicy.Builder()
+                    .needLoadAvailable()
+                    .needScheduleAvailable()
+                    .build();
             List<Long> backendIds = Env.getCurrentSystemInfo().selectBackendIdsByPolicy(policy, 1);
             if (backendIds.isEmpty()) {
                 throw new LoadException(SystemInfoService.NO_BACKEND_LOAD_AVAILABLE_MSG + ", policy: " + policy);

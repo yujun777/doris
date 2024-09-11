@@ -104,7 +104,11 @@ public class InsertStreamTxnExecutor {
             table.readUnlock();
         }
 
-        BeSelectionPolicy policy = new BeSelectionPolicy.Builder().needLoadAvailable().needQueryAvailable().build();
+        BeSelectionPolicy policy = new BeSelectionPolicy.Builder()
+                .needQueryAvailable()
+                .needLoadAvailable()
+                .needScheduleAvailable()
+                .build();
         List<Long> beIds = Env.getCurrentSystemInfo().selectBackendIdsByPolicy(policy, 1);
         if (beIds.isEmpty()) {
             throw new UserException("No available backend to match the policy: " + policy);

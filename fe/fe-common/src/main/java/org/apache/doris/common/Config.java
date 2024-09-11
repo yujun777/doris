@@ -1305,6 +1305,14 @@ public class Config extends ConfigBase {
     public static boolean drop_backend_after_decommission = true;
 
     /**
+     * If set to true,  decommission a be will wait txns(which coorinator be is this be) to be finished.
+     * If set to false, when this decommission be no tablets,
+     *   will abort txns(which coorinator be is this be) immediately.
+     */
+    @ConfField(mutable = true, masterOnly = true)
+    public static boolean decommission_be_wait_coordidator_txn = true;
+
+    /**
      * When tablet size of decommissioned backend is lower than this threshold,
      * SystemHandler will start to check if all tablets of this backend are in recycled status,
      * this backend will be dropped immediately if the check result is true.

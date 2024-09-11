@@ -96,7 +96,11 @@ public class SystemHandler extends AlterHandler {
 
             List<Long> backendTabletIds = invertedIndex.getTabletIdsByBackendId(beId);
             long walNum = Env.getCurrentEnv().getGroupCommitManager().getAllWalQueueSize(backend);
-            if (Config.drop_backend_after_decommission && checkTablets(beId, backendTabletIds) && walNum == 0) {
+            boolean hasPrepareTxn = !Env.getCurrentGlobalTransactionMgr()
+                    .getPrepareTransactionIdByCoordinateBe(backend.getId(), backend.getHost(), 1)
+                    .isEmpty();
+            if (Config.drop_backend_after_decommission && checkTablets(beId, backendTabletIds) && walNum == 0
+                    && (!backend.isAlive() || !hasPrepareTxn || !Config.decommission_be_wait_coordidator_txn)) {
                 try {
                     systemInfoService.dropBackend(beId);
                     LOG.info("no available tablet on decommission backend {}, drop it", beId);
@@ -104,12 +108,16 @@ public class SystemHandler extends AlterHandler {
                     // does not matter, may be backend not exist
                     LOG.info("backend {} is dropped failed after decommission {}", beId, e.getMessage());
                 }
+
+                Env.getCurrentGlobalTransactionMgr().abortTxnWhenCoordinateBeDown(
+                        backend.getId(), backend.getHost(), Integer.MAX_VALUE);
                 continue;
             }
 
-            LOG.info("backend {} lefts {} replicas to decommission: {}{}", beId, backendTabletIds.size(),
+            LOG.info("backend {} lefts {} replicas to decommission: {}{}{}", beId, backendTabletIds.size(),
                     backendTabletIds.subList(0, Math.min(10, backendTabletIds.size())),
-                    walNum > 0 ? "; and has " + walNum + " unfinished WALs" : "");
+                    walNum > 0 ? "; and has " + walNum + " unfinished WALs" : "",
+                    hasPrepareTxn ? "; and has prepare txns on this coordinator be" : "");
         }
     }
 
@@ -139,12 +147,20 @@ public class SystemHandler extends AlterHandler {
                         + "All data on this backend will be discarded permanently. "
                         + "If you insist, use DROPP instead of DROP");
             }
-            if (dropBackendClause.getHostInfos().isEmpty()) {
-                // drop by id
-                Env.getCurrentSystemInfo().dropBackendsByIds(dropBackendClause.getIds());
-            } else {
-                // drop by host
-                Env.getCurrentSystemInfo().dropBackends(dropBackendClause.getHostInfos());
+            List<Backend> succDropBackends = Lists.newArrayList();
+            try {
+                if (dropBackendClause.getHostInfos().isEmpty()) {
+                    // drop by id
+                    Env.getCurrentSystemInfo().dropBackendsByIds(dropBackendClause.getIds(), succDropBackends);
+                } else {
+                    // drop by host
+                    Env.getCurrentSystemInfo().dropBackends(dropBackendClause.getHostInfos(), succDropBackends);
+                }
+            } finally {
+                for (Backend backend : succDropBackends) {
+                    Env.getCurrentGlobalTransactionMgr().abortTxnWhenCoordinateBeDown(
+                            backend.getId(), backend.getHost(), Integer.MAX_VALUE);
+                }
             }
         } else if (alterClause instanceof DecommissionBackendClause) {
             // decommission

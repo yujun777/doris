@@ -422,7 +422,9 @@ public class LoadAction extends RestBaseController {
         policy = new BeSelectionPolicy.Builder()
                 .addTags(userTags)
                 .setEnableRoundRobin(true)
-                .needLoadAvailable().build();
+                .needLoadAvailable()
+                .needScheduleAvailable()
+                .build();
         policy.nextRoundRobinIndex = getLastSelectedBackendIndexAndUpdate();
         List<Long> backendIds;
         if (groupCommit) {
