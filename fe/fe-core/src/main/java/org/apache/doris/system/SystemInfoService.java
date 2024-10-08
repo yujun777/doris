@@ -162,7 +162,7 @@ public class SystemInfoService {
     public static TPaloNodesInfo createAliveNodesInfo() {
         TPaloNodesInfo nodesInfo = new TPaloNodesInfo();
         SystemInfoService systemInfoService = Env.getCurrentSystemInfo();
-        for (Long id : systemInfoService.getAllBackendIds(true /*need alive*/)) {
+        for (Long id : systemInfoService.getAllBackendIds(true /* need alive */)) {
             Backend backend = systemInfoService.getBackend(id);
             nodesInfo.addToNodes(new TNodeInfo(backend.getId(), 0, backend.getHost(), backend.getBrpcPort()));
         }
@@ -454,10 +454,12 @@ public class SystemInfoService {
      * The following parameters need to be considered when selecting backends.
      *
      * @param replicaAlloc
-     * @param nextIndexs create tablet round robin next be index, when enable_round_robin_create_tablet
+     * @param nextIndexs               create tablet round robin next be index, when
+     *                                 enable_round_robin_create_tablet
      * @param storageMedium
      * @param isStorageMediumSpecified
-     * @param isOnlyForCheck set true if only used for check available backend
+     * @param isOnlyForCheck           set true if only used for check available
+     *                                 backend
      * @return return the selected backend ids group by tag.
      * @throws DdlException
      */
@@ -526,7 +528,9 @@ public class SystemInfoService {
             if (!failedEntries.isEmpty()) {
                 String failedMsg = Joiner.on("\n").join(failedEntries);
                 throw new DdlException("Failed to find enough backend, please check the replication num,"
-                        + "replication tag and storage medium.\n" + "Create failed replications:\n" + failedMsg);
+                        + "replication tag and storage medium and avail capacity of backends "
+                        + "or maybe all be on same host." + getDetailsForCreateReplica(replicaAlloc) + "\n"
+                        + "Create failed replications:\n" + failedMsg);
             }
         }
 
@@ -534,13 +538,28 @@ public class SystemInfoService {
         return Pair.of(chosenBackendIds, storageMedium);
     }
 
+    public String getDetailsForCreateReplica(ReplicaAllocation replicaAlloc) {
+        StringBuilder sb = new StringBuilder(" Backends details: ");
+        for (Tag tag : replicaAlloc.getAllocMap().keySet()) {
+            sb.append("backends with tag ").append(tag).append(" is ");
+            sb.append(idToBackendRef.values().stream().filter(be -> be.getLocationTag() == tag)
+                    .map(Backend::getDetailsForCreateReplica)
+                    .collect(Collectors.toList()));
+            sb.append(", ");
+        }
+        return sb.toString();
+    }
+
     /**
      * Select a set of backends by the given policy.
      *
-     * @param policy if policy is enableRoundRobin, will update its nextRoundRobinIndex
-     * @param number number of backends which need to be selected. -1 means return as many as possible.
+     * @param policy if policy is enableRoundRobin, will update its
+     *               nextRoundRobinIndex
+     * @param number number of backends which need to be selected. -1 means return
+     *               as many as possible.
      * @return return #number of backend ids,
-     * or empty set if no backends match the policy, or the number of matched backends is less than "number";
+     *         or empty set if no backends match the policy, or the number of
+     *         matched backends is less than "number";
      */
     public List<Long> selectBackendIdsByPolicy(BeSelectionPolicy policy, int number) {
         Preconditions.checkArgument(number >= -1);
@@ -707,7 +726,6 @@ public class SystemInfoService {
         }
     }
 
-
     public static Pair<String, Integer> validateHostAndPort(String hostPort) throws AnalysisException {
         HostInfo hostInfo = getHostAndPort(hostPort);
         return Pair.of(hostInfo.getHost(), hostInfo.getPort());
@@ -831,7 +849,8 @@ public class SystemInfoService {
     }
 
     // update the path info when disk report
-    // there is only one thread can update path info, so no need to worry about concurrency control
+    // there is only one thread can update path info, so no need to worry about
+    // concurrency control
     public void updatePathInfo(List<DiskInfo> addedDisks, List<DiskInfo> removedDisks) {
         Map<Long, DiskInfo> copiedPathInfos = Maps.newHashMap(pathHashToDishInfoRef);
         for (DiskInfo diskInfo : addedDisks) {
