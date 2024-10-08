@@ -100,13 +100,15 @@ public class Backend implements Writable {
 
     private String heartbeatErrMsg = "";
 
-    // This is used for the first time we init pathHashToDishInfo in SystemInfoService.
+    // This is used for the first time we init pathHashToDishInfo in
+    // SystemInfoService.
     // after init it, this variable is set to true.
     private boolean initPathInfo = false;
 
     private long lastMissingHeartbeatTime = -1;
     // the max tablet compaction score of this backend.
-    // this field is set by tablet report, and just for metric monitor, no need to persist.
+    // this field is set by tablet report, and just for metric monitor, no need to
+    // persist.
     private volatile long tabletMaxCompactionScore = 0;
 
     // additional backendStatus information for BE, display in JSON format
@@ -114,14 +116,15 @@ public class Backend implements Writable {
     private BackendStatus backendStatus = new BackendStatus();
     // the locationTag is also saved in tagMap, use a single field here to avoid
     // creating this everytime we get it.
-    @SerializedName(value = "locationTag", alternate = {"tag"})
+    @SerializedName(value = "locationTag", alternate = { "tag" })
     private Tag locationTag = Tag.DEFAULT_BACKEND_TAG;
 
     @SerializedName("nodeRole")
     private Tag nodeRoleTag = Tag.DEFAULT_NODE_ROLE_TAG;
 
     // tag type -> tag value.
-    // A backend can only be assigned to one tag type, and each type can only have one value.
+    // A backend can only be assigned to one tag type, and each type can only have
+    // one value.
     @SerializedName("tagMap")
     private Map<String, String> tagMap = Maps.newHashMap();
 
@@ -135,13 +138,15 @@ public class Backend implements Writable {
 
     // Counter of heartbeat failure.
     // Once a heartbeat failed, increase this counter by one.
-    // And if it reaches Config.max_backend_heartbeat_failure_tolerance_count, this backend
+    // And if it reaches Config.max_backend_heartbeat_failure_tolerance_count, this
+    // backend
     // will be marked as dead.
     // And once it back to alive, reset this counter.
     // No need to persist, because only master FE handle heartbeat.
     private int heartbeatFailureCounter = 0;
 
-    // Not need serialize this field. If fe restart the state is reset to false. Maybe fe will
+    // Not need serialize this field. If fe restart the state is reset to false.
+    // Maybe fe will
     // send some queries to this BE, it is not an important problem.
     private AtomicBoolean isShutDown = new AtomicBoolean(false);
 
@@ -246,6 +251,71 @@ public class Backend implements Writable {
 
     public void setLoadDisabled(boolean isLoadDisabled) {
         this.backendStatus.isLoadDisabled = isLoadDisabled;
+    }
+
+    public String getDetailsForCreateReplica() {
+        int hddBad = 0;
+        int hddExceedLimit = 0;
+        int hddOk = 0;
+        int ssdBad = 0;
+        int ssdExceedLimit = 0;
+        int ssdOk = 0;
+        for (DiskInfo disk : disksRef.values()) {
+            TStorageMedium storageMedium = disk.getStorageMedium();
+            if (storageMedium == TStorageMedium.HDD) {
+                if (!disk.isAlive()) {
+                    hddBad++;
+                } else if (disk.exceedLimit(true)) {
+                    hddExceedLimit++;
+                } else {
+                    hddOk++;
+                }
+            } else if (storageMedium == TStorageMedium.SSD) {
+                if (!disk.isAlive()) {
+                    ssdBad++;
+                } else if (disk.exceedLimit(true)) {
+                    ssdExceedLimit++;
+                } else {
+                    ssdOk++;
+                }
+            }
+        }
+
+        StringBuilder sb = new StringBuilder("[");
+        sb.append("backendId=").append(id);
+        sb.append(", host=").append(host);
+        if (!isAlive()) {
+            sb.append(", isAlive=false, exclude it");
+        } else if (isDecommissioned()) {
+            sb.append(", isDecommissioned=true, exclude it");
+        } else if (isComputeNode()) {
+            sb.append(", isComputeNode=true, exclude it");
+        } else {
+            sb.append(", hdd disks count={");
+            if (hddOk > 0) {
+                sb.append("ok=").append(hddOk).append(",");
+            }
+            if (hddBad > 0) {
+                sb.append("bad=").append(hddBad).append(",");
+            }
+            if (hddExceedLimit > 0) {
+                sb.append("capExceedLimit=").append(hddExceedLimit).append(",");
+            }
+            sb.append("}, ssd disk count={");
+            if (ssdOk > 0) {
+                sb.append("ok=").append(ssdOk).append(",");
+            }
+            if (ssdBad > 0) {
+                sb.append("bad=").append(ssdBad).append(",");
+            }
+            if (ssdExceedLimit > 0) {
+                sb.append("capExceedLimit=").append(ssdExceedLimit).append(",");
+            }
+            sb.append("}");
+        }
+        sb.append("]");
+
+        return sb.toString();
     }
 
     // for test only
@@ -472,8 +542,8 @@ public class Backend implements Writable {
         ImmutableMap<String, DiskInfo> diskInfos = disksRef;
         boolean exceedLimit = true;
         for (DiskInfo diskInfo : diskInfos.values()) {
-            if (diskInfo.getState() == DiskState.ONLINE && diskInfo.getStorageMedium()
-                    == storageMedium && !diskInfo.exceedLimit(true)) {
+            if (diskInfo.getState() == DiskState.ONLINE && diskInfo.getStorageMedium() == storageMedium
+                    && !diskInfo.exceedLimit(true)) {
                 exceedLimit = false;
                 break;
             }
@@ -519,7 +589,8 @@ public class Backend implements Writable {
         List<DiskInfo> removedDisks = Lists.newArrayList();
         /*
          * set isChanged to true only if new disk is added or old disk is dropped.
-         * we ignore the change of capacity, because capacity info is only used in master FE.
+         * we ignore the change of capacity, because capacity info is only used in
+         * master FE.
          */
         boolean isChanged = false;
         for (TDisk tDisk : backendDisks.values()) {
@@ -602,8 +673,10 @@ public class Backend implements Writable {
     }
 
     /**
-     * In old version, there is only one tag for a Backend, and it is a "location" type tag.
-     * But in new version, a Backend can have multi tag, so we need to put locationTag to
+     * In old version, there is only one tag for a Backend, and it is a "location"
+     * type tag.
+     * But in new version, a Backend can have multi tag, so we need to put
+     * locationTag to
      * the new tagMap
      */
     private void convertToTagMapAndSetLocationTag() {
@@ -648,8 +721,8 @@ public class Backend implements Writable {
 
         Backend backend = (Backend) obj;
 
-        return (id == backend.id) && (host.equals(backend.host)) && (heartbeatPort == backend.heartbeatPort) && (bePort
-                == backend.bePort) && (isAlive.get() == backend.isAlive.get());
+        return (id == backend.id) && (host.equals(backend.host)) && (heartbeatPort == backend.heartbeatPort)
+                && (bePort == backend.bePort) && (isAlive.get() == backend.isAlive.get());
     }
 
     @Override
@@ -742,7 +815,8 @@ public class Backend implements Writable {
                 }
             }
 
-            // still set error msg and missing time even if we may not mark this backend as dead,
+            // still set error msg and missing time even if we may not mark this backend as
+            // dead,
             // for debug easily.
             // But notice that if isChanged = false, these msg will not sync to other FE.
             heartbeatErrMsg = hbResponse.getMsg() == null ? "Unknown error" : hbResponse.getMsg();
@@ -772,8 +846,8 @@ public class Backend implements Writable {
      * Note: This class must be a POJO in order to display in JSON format
      * Add additional information in the class to show in `show backends`
      * if just change new added backendStatus, you can do like following
-     *     BackendStatus status = Backend.getBackendStatus();
-     *     status.newItem = xxx;
+     * BackendStatus status = Backend.getBackendStatus();
+     * status.newItem = xxx;
      */
     public class BackendStatus {
         // this will be output as json, so not using FeConstants.null_string;
