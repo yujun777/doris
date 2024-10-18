@@ -119,6 +119,7 @@ Status LocalFileReader::close() {
 
 Status LocalFileReader::read_at_impl(size_t offset, Slice result, size_t* bytes_read,
                                      const IOContext* /*io_ctx*/) {
+    LOG(INFO) << "TODO enter read_at_impl, path=" << _path.native() << std::endl;
     TEST_SYNC_POINT_RETURN_WITH_VALUE("LocalFileReader::read_at_impl",
                                       Status::IOError("inject io error"));
     if (closed()) [[unlikely]] {
