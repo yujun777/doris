@@ -149,7 +149,10 @@ Status LocalFileReader::read_at_impl(size_t offset, Slice result, size_t* bytes_
             }
         });
         if (UNLIKELY(-1 == res && errno != EINTR)) {
-            return localfs_error(errno, fmt::format("failed to read {}", _path.native()));
+            auto status = localfs_error(errno, fmt::format("failed to read {}", _path.native()));
+            LOG(INFO) << "TODO met error 1: " << status;
+            LOG(INFO) << "TODO met error 2: " << Status::IOError("{}", _path.native());
+            return status;
         }
         if (UNLIKELY(res == 0)) {
             return Status::InternalError("cannot read from {}: unexpected EOF", _path.native());
