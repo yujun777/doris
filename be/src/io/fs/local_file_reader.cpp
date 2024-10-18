@@ -119,6 +119,7 @@ Status LocalFileReader::close() {
 
 Status LocalFileReader::read_at_impl(size_t offset, Slice result, size_t* bytes_read,
                                      const IOContext* /*io_ctx*/) {
+    LOG(INFO) << "TODO read_at_impl enter" << std::endl;
     TEST_SYNC_POINT_RETURN_WITH_VALUE("LocalFileReader::read_at_impl",
                                       Status::IOError("inject io error"));
     if (closed()) [[unlikely]] {
@@ -141,11 +142,9 @@ Status LocalFileReader::read_at_impl(size_t offset, Slice result, size_t* bytes_
         auto res = SYNC_POINT_HOOK_RETURN_VALUE(::pread(_fd, to, bytes_req, offset),
                                                 "LocalFileReader::pread", _fd, to);
         DBUG_EXECUTE_IF("LocalFileReader::read_at_impl.pread_failed", {
-            if (_path.native().find(dp->param<std::string>("path", "!!!!")) != std::string::npos) {
-                res = -1;
-                errno = EIO;
-                LOG(INFO) << "TODO debug pread failed: " << _path.native();
-            }
+            res = -1;
+            errno = EIO;
+            LOG(INFO) << "TODO debug pread failed: " << _path.native();
         });
         if (UNLIKELY(-1 == res && errno != EINTR)) {
             return localfs_error(errno, fmt::format("failed to read {}", _path.native()));
