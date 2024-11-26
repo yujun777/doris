@@ -43,6 +43,7 @@ import org.apache.doris.nereids.trees.expressions.literal.DoubleLiteral;
 import org.apache.doris.nereids.trees.expressions.literal.FloatLiteral;
 import org.apache.doris.nereids.trees.expressions.literal.IntegerLikeLiteral;
 import org.apache.doris.nereids.trees.expressions.literal.IntegerLiteral;
+import org.apache.doris.nereids.trees.expressions.literal.LargeIntLiteral;
 import org.apache.doris.nereids.trees.expressions.literal.Literal;
 import org.apache.doris.nereids.trees.expressions.literal.NullLiteral;
 import org.apache.doris.nereids.trees.expressions.literal.SmallIntLiteral;
@@ -67,6 +68,9 @@ import java.util.List;
  * simplify comparison
  * such as: cast(c1 as DateV2) >= DateV2Literal --> c1 >= DateLiteral
  *          cast(c1 AS double) > 2.0 --> c1 >= 2 (c1 is integer like type)
+ *
+ * not support for largeInt.
+ *
  */
 public class SimplifyComparisonPredicate extends AbstractExpressionRewriteRule implements ExpressionPatternRuleFactory {
     public static SimplifyComparisonPredicate INSTANCE = new SimplifyComparisonPredicate();
@@ -97,6 +101,10 @@ public class SimplifyComparisonPredicate extends AbstractExpressionRewriteRule i
 
         Expression left = cp.left();
         Expression right = cp.right();
+
+        if (left.getDataType().isIntegerLikeType() && right.getDataType().isIntegerLikeType()) {
+            return processIntegerLikeTypeCoercion(cp, left, right)
+        }
 
         // float like type: float, double
         if (left.getDataType().isFloatLikeType() && right.getDataType().isFloatLikeType()) {
@@ -209,6 +217,19 @@ public class SimplifyComparisonPredicate extends AbstractExpressionRewriteRule i
         }
     }
 
+    private static Expression processIntegerLikeTypeCoercion(ComparisonPredicate comparisonPredicate,
+            Expression left, Expression right) {
+        if (left instanceof Cast && left.child(0).getDataType().isIntegerLikeType()
+                && right instanceof IntegerLikeLiteral && !(right instanceof LargeIntLiteral)) {
+            Cast cast = (Cast) left;
+            left = cast.child();
+            BigDecimal literal = new BigDecimal(((Literal) right).getStringValue());
+            return processIntegerDecimalLiteralComparison(comparisonPredicate, left, literal);
+        } else {
+            return comparisonPredicate;
+        }
+    }
+
     private static Expression processFloatLikeTypeCoercion(ComparisonPredicate comparisonPredicate,
             Expression left, Expression right) {
         if (left instanceof Cast && left.child(0).getDataType().isIntegerLikeType()
@@ -281,7 +302,8 @@ public class SimplifyComparisonPredicate extends AbstractExpressionRewriteRule i
     private static Expression processIntegerDecimalLiteralComparison(
             ComparisonPredicate comparisonPredicate, Expression left, BigDecimal literal) {
         // we only process isIntegerLikeType, which are tinyint, smallint, int, bigint
-        if (literal.compareTo(new BigDecimal(Long.MAX_VALUE)) <= 0) {
+        if (literal.compareTo(new BigDecimal(Long.MIN_VALUE)) >= 0
+                && literal.compareTo(new BigDecimal(Long.MAX_VALUE)) <= 0) {
             literal = literal.stripTrailingZeros();
             if (literal.scale() > 0) {
                 if (comparisonPredicate instanceof EqualTo) {
@@ -320,9 +342,14 @@ public class SimplifyComparisonPredicate extends AbstractExpressionRewriteRule i
         return comparisonPredicate;
     }
 
+    private static Expression processIntegerDecimalLiteralComparison(
+            ComparisonPredicate comparisonPredicate, Expression left, BigDecimal literal) {
+    }
+
     private static IntegerLikeLiteral convertDecimalToIntegerLikeLiteral(BigDecimal decimal) {
-        Preconditions.checkArgument(
-                decimal.scale() <= 0 && decimal.compareTo(new BigDecimal(Long.MAX_VALUE)) <= 0,
+        Preconditions.checkArgument(decimal.scale() <= 0
+                && decimal.compareTo(new BigDecimal(Long.MIN_VALUE)) >= 0
+                && decimal.compareTo(new BigDecimal(Long.MAX_VALUE)) <= 0,
                 "decimal literal must have 0 scale and smaller than Long.MAX_VALUE");
         long val = decimal.longValue();
         if (val >= Byte.MIN_VALUE && val <= Byte.MAX_VALUE) {
