@@ -335,6 +335,22 @@ class UpCommand(Command):
                             type=str,
                             help="Specify recycle configs for doris_cloud.conf. "\
                                     "Example: --recycle-config \"log_level = warn\".")
+
+        group1.add_argument(
+            "--remote-master-fe",
+            type=str,
+            help=
+            "Specify remote master fe address with ip:query_port, and all the container use host network. " \
+                "Only use when creating new cluster."
+        )
+
+        group1.add_argument(
+            "--local-network-ip",
+            type=str,
+            help= "Specify local network ip, no need specify, will auto chose a proper ip. "\
+                "Only use when creating new cluster and specify --remote-master-fe."
+        )
+
         group1.add_argument(
             "--fe-follower",
             default=False,
@@ -517,11 +533,23 @@ class UpCommand(Command):
                 args.add_ms_num = 0
                 args.add_recycle_num = 0
 
+            local_network_ip = ""
+            if args.remote_master_fe:
+                pos = args.remote_master_fe.find(':')
+                if pos < 0:
+                    raise Exception(
+                        f"invalid --remote-master-fe-addr {args.remote_master_fe}, should be 'ip:query_port'"
+                    )
+                local_network_ip = args.local_network_ip
+                if not local_network_ip:
+                    local_network_ip = utils.get_local_ip()
+
             cluster = CLUSTER.Cluster.new(
                 args.NAME, args.IMAGE, args.cloud, args.root, args.fe_config,
                 args.be_config, args.ms_config, args.recycle_config,
-                args.fe_follower, args.be_disks, args.be_cluster, args.reg_be,
-                args.coverage_dir, cloud_store_config, args.sql_mode_node_mgr,
+                args.remote_master_fe, local_network_ip, args.fe_follower,
+                args.be_disks, args.be_cluster, args.reg_be, args.coverage_dir,
+                cloud_store_config, args.sql_mode_node_mgr,
                 args.be_metaservice_endpoint, args.be_cluster_id)
             LOG.info("Create new cluster {} succ, cluster path is {}".format(
                 args.NAME, cluster.get_path()))

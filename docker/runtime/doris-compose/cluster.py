@@ -356,7 +356,7 @@ class Node(object):
             envs["META_SERVICE_ENDPOINT"] = self.cluster.get_meta_server_addr()
 
         # run as host user
-        if not getattr(self.cluster, 'is_root_user', True):
+        if not self.cluster.is_root_user:
             envs["HOST_USER"] = getpass.getuser()
             envs["HOST_UID"] = os.getuid()
             envs["HOST_GID"] = os.getgid()
@@ -728,9 +728,10 @@ class FDB(Node):
 class Cluster(object):
 
     def __init__(self, name, subnet, image, is_cloud, is_root_user, fe_config,
-                 be_config, ms_config, recycle_config, fe_follower, be_disks,
-                 be_cluster, reg_be, coverage_dir, cloud_store_config,
-                 sql_mode_node_mgr, be_metaservice_endpoint, be_cluster_id):
+                 be_config, ms_config, recycle_config, remote_master_fe,
+                 local_network_ip, fe_follower, be_disks, be_cluster, reg_be,
+                 coverage_dir, cloud_store_config, sql_mode_node_mgr,
+                 be_metaservice_endpoint, be_cluster_id):
         self.name = name
         self.subnet = subnet
         self.image = image
@@ -740,6 +741,8 @@ class Cluster(object):
         self.be_config = be_config
         self.ms_config = ms_config
         self.recycle_config = recycle_config
+        self.remote_master_fe = remote_master_fe
+        self.local_network_ip = local_network_ip
         self.fe_follower = fe_follower
         self.be_disks = be_disks
         self.be_cluster = be_cluster
@@ -756,9 +759,10 @@ class Cluster(object):
 
     @staticmethod
     def new(name, image, is_cloud, is_root_user, fe_config, be_config,
-            ms_config, recycle_config, fe_follower, be_disks, be_cluster,
-            reg_be, coverage_dir, cloud_store_config, sql_mode_node_mgr,
-            be_metaservice_endpoint, be_cluster_id):
+            ms_config, recycle_config, remote_master_fe, local_network_ip,
+            fe_follower, be_disks, be_cluster, reg_be, coverage_dir,
+            cloud_store_config, sql_mode_node_mgr, be_metaservice_endpoint,
+            be_cluster_id):
         if not os.path.exists(LOCAL_DORIS_PATH):
             os.makedirs(LOCAL_DORIS_PATH, exist_ok=True)
             os.chmod(LOCAL_DORIS_PATH, 0o777)
@@ -769,10 +773,10 @@ class Cluster(object):
             subnet = gen_subnet_prefix16()
             cluster = Cluster(name, subnet, image, is_cloud, is_root_user,
                               fe_config, be_config, ms_config, recycle_config,
-                              fe_follower, be_disks, be_cluster, reg_be,
-                              coverage_dir, cloud_store_config,
-                              sql_mode_node_mgr, be_metaservice_endpoint,
-                              be_cluster_id)
+                              remote_master_fe, local_network_ip, fe_follower,
+                              be_disks, be_cluster, reg_be, coverage_dir,
+                              cloud_store_config, sql_mode_node_mgr,
+                              be_metaservice_endpoint, be_cluster_id)
             os.makedirs(cluster.get_path(), exist_ok=True)
             os.makedirs(get_status_path(name), exist_ok=True)
             cluster._save_meta()
