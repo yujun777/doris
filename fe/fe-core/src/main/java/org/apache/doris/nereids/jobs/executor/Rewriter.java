@@ -51,6 +51,7 @@ import org.apache.doris.nereids.rules.rewrite.ClearContextStatus;
 import org.apache.doris.nereids.rules.rewrite.CollectCteConsumerOutput;
 import org.apache.doris.nereids.rules.rewrite.CollectFilterAboveConsumer;
 import org.apache.doris.nereids.rules.rewrite.ColumnPruning;
+import org.apache.doris.nereids.rules.rewrite.ConstantPropagation;
 import org.apache.doris.nereids.rules.rewrite.ConvertInnerOrCrossJoin;
 import org.apache.doris.nereids.rules.rewrite.CountDistinctRewrite;
 import org.apache.doris.nereids.rules.rewrite.CountLiteralRewrite;
@@ -335,10 +336,12 @@ public class Rewriter extends AbstractBatchJobExecutor {
                 // is because that pulling up predicates from union needs EliminateEmptyRelation in union child
                 topic("Column pruning and infer predicate",
                         custom(RuleType.COLUMN_PRUNING, ColumnPruning::new),
+                        custom(RuleType.CONSTANT_PROPAGATION, ConstantPropagation::new),
                         custom(RuleType.INFER_PREDICATES, InferPredicates::new),
                         // column pruning create new project, so we should use PUSH_DOWN_FILTERS
                         // to change filter-project to project-filter
                         bottomUp(RuleSet.PUSH_DOWN_FILTERS),
+                        custom(RuleType.CONSTANT_PROPAGATION, ConstantPropagation::new),
                         // after eliminate outer join in the PUSH_DOWN_FILTERS,
                         // we can infer more predicate and push down
                         custom(RuleType.INFER_PREDICATES, InferPredicates::new),

@@ -20,6 +20,7 @@ package org.apache.doris.nereids.properties;
 import org.apache.doris.nereids.trees.expressions.Expression;
 import org.apache.doris.nereids.trees.expressions.Slot;
 import org.apache.doris.nereids.trees.expressions.functions.ExpressionTrait;
+import org.apache.doris.nereids.trees.expressions.literal.Literal;
 import org.apache.doris.nereids.trees.expressions.literal.NullLiteral;
 import org.apache.doris.nereids.util.ImmutableEqualSet;
 
@@ -127,6 +128,12 @@ public class DataTrait {
         return uniformSet.slotUniformValue.get(slot);
     }
 
+    public Map<Slot, Literal> getAllUniformAndConstant() {
+        return uniformSet.slotUniformValue.entrySet().stream()
+                .filter(entry -> entry.getValue().isPresent() && entry.getValue().get().isLiteral())
+                .collect(Collectors.toMap(Map.Entry::getKey, entry -> (Literal) entry.getValue().get()));
+    }
+
     public boolean isNullSafeEqual(Slot l, Slot r) {
         return equalSet.isEqual(l, r);
     }
@@ -145,6 +152,10 @@ public class DataTrait {
 
     public Set<Slot> calEqualSet(Slot s) {
         return equalSet.calEqualSet(s);
+    }
+
+    public ImmutableEqualSet<Slot> getEqualSlots() {
+        return equalSet;
     }
 
     public ImmutableSet<FdItem> getFdItems() {

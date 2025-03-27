@@ -181,9 +181,8 @@ public class InferPredicateByReplace {
                 continue;
             }
             PredicateInferUtils.getPairFromCast((ComparisonPredicate) input)
-                    .filter(pair -> PredicateInferUtils.isSlotOrLiteral(pair.first)
-                            && PredicateInferUtils.isSlotOrLiteral(pair.second))
-                    .filter(pair -> !(pair.first instanceof NullLiteral) && !(pair.second instanceof NullLiteral))
+                    .filter(pair -> PredicateInferUtils.isSlotOrNotNullLiteral(pair.first)
+                            && PredicateInferUtils.isSlotOrNotNullLiteral(pair.second))
                     .ifPresent(pair -> {
                         Expression left = pair.first;
                         Expression right = pair.second;
