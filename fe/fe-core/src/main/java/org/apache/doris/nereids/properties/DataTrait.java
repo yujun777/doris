@@ -154,7 +154,7 @@ public class DataTrait {
         return equalSet.calEqualSet(s);
     }
 
-    public ImmutableEqualSet<Slot> getEqualSlots() {
+    public ImmutableEqualSet<Slot> getEqualSet() {
         return equalSet;
     }
 

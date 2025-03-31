@@ -91,24 +91,4 @@ public class PredicatesSplitterTest extends ExpressionRewriteTestHelper {
         }
     }
 
-    @Override
-    public Expression replaceUnboundSlot(Expression expression, Map<String, Slot> mem) {
-        List<Expression> children = Lists.newArrayList();
-        boolean hasNewChildren = false;
-        for (Expression child : expression.children()) {
-            Expression newChild = replaceUnboundSlot(child, mem);
-            if (newChild != child) {
-                hasNewChildren = true;
-            }
-            children.add(newChild);
-        }
-        if (expression instanceof UnboundSlot) {
-            String name = ((UnboundSlot) expression).getName();
-            mem.putIfAbsent(name, SlotReference.fromColumn(null,
-                    new Column(name, getType(name.charAt(0)).toCatalogDataType()),
-                    Lists.newArrayList("table")));
-            return mem.get(name);
-        }
-        return hasNewChildren ? expression.withChildren(children) : expression;
-    }
 }
