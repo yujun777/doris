@@ -26,9 +26,6 @@ import com.google.common.collect.ImmutableList;
 import java.util.List;
 
 /**
- * Convert invalid inner join to cross join.
- * Like: A inner join B on true -> A cross join B on true;
- * Or
  * Convert invalid cross join to inner join.
  * Like: A cross join B on A.id > 1 -> A inner join B on A.id > 1;
  */
@@ -36,11 +33,6 @@ public class ConvertInnerOrCrossJoin implements RewriteRuleFactory {
     @Override
     public List<Rule> buildRules() {
         return ImmutableList.of(
-            innerLogicalJoin()
-                .when(join -> join.getHashJoinConjuncts().isEmpty() && join.getOtherJoinConjuncts().isEmpty()
-                        && join.getMarkJoinConjuncts().isEmpty())
-                .then(join -> join.withJoinTypeAndContext(JoinType.CROSS_JOIN, join.getJoinReorderContext()))
-                .toRule(RuleType.INNER_TO_CROSS_JOIN),
             crossLogicalJoin()
                 .when(join -> !join.getHashJoinConjuncts().isEmpty() || !join.getOtherJoinConjuncts().isEmpty()
                         || !join.getMarkJoinConjuncts().isEmpty())

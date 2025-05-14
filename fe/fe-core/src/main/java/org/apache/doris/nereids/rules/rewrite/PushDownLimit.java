@@ -141,6 +141,15 @@ public class PushDownLimit implements RewriteRuleFactory {
                         limit.withChildren(join.left()),
                         limit.withChildren(join.right())
                 );
+            case INNER_JOIN:
+                if (join.isConjunctsEmpty()) {
+                    return join.withChildren(
+                            limit.withChildren(join.left()),
+                            limit.withChildren(join.right())
+                    );
+                } else {
+                    return null;
+                }
             default:
                 // don't push limit.
                 return null;

@@ -272,6 +272,10 @@ public class LogicalJoin<LEFT_CHILD_TYPE extends Plan, RIGHT_CHILD_TYPE extends 
         return joinReorderContext;
     }
 
+    public boolean isConjunctsEmpty() {
+        return hashJoinConjuncts.isEmpty() && otherJoinConjuncts.isEmpty() && markJoinConjuncts.isEmpty();
+    }
+
     @Override
     public List<Slot> computeOutput() {
         return ImmutableList.<Slot>builder()
