@@ -470,6 +470,10 @@ public class Config extends ConfigBase {
             + "then the load task will be successful." })
     public static int publish_wait_time_second = 300;
 
+    @ConfField(mutable = true, masterOnly = true, description = {"不指定分区时，最大分区数。",
+            "Maximal waiting time for creating a table, in seconds."})
+    public static int max_full_scan_partition_num = 200;
+
     @ConfField(mutable = true, masterOnly = true, description = {"单个事务 publish 失败打日志间隔",
             "print log interval for publish transaction failed interval"})
     public static long publish_fail_log_interval_second = 5 * 60;

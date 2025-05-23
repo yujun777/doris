@@ -40,6 +40,7 @@ import org.apache.doris.nereids.rules.rewrite.BuildAggForUnion;
 import org.apache.doris.nereids.rules.rewrite.CTEInline;
 import org.apache.doris.nereids.rules.rewrite.CheckAndStandardizeWindowFunctionAndFrame;
 import org.apache.doris.nereids.rules.rewrite.CheckDataTypes;
+import org.apache.doris.nereids.rules.rewrite.CheckFullScanPartitionNum;
 import org.apache.doris.nereids.rules.rewrite.CheckMatchExpression;
 import org.apache.doris.nereids.rules.rewrite.CheckMultiDistinct;
 import org.apache.doris.nereids.rules.rewrite.CollectFilterAboveConsumer;
@@ -383,6 +384,7 @@ public class Rewriter extends AbstractBatchJobExecutor {
                     bottomUp(
                             new ExpressionRewrite(CheckLegalityAfterRewrite.INSTANCE),
                             new CheckMatchExpression(),
+                            new CheckFullScanPartitionNum(),
                             new CheckMultiDistinct(),
                             new CheckAfterRewrite()
                     )
