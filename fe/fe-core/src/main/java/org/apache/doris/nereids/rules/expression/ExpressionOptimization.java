@@ -27,7 +27,6 @@ import org.apache.doris.nereids.rules.expression.rules.LikeToEqualRewrite;
 import org.apache.doris.nereids.rules.expression.rules.NestedCaseWhenCondToLiteral;
 import org.apache.doris.nereids.rules.expression.rules.NullSafeEqualToEqual;
 import org.apache.doris.nereids.rules.expression.rules.ReplaceNullWithFalseForCond;
-import org.apache.doris.nereids.rules.expression.rules.SimplifyCaseWhenLike;
 import org.apache.doris.nereids.rules.expression.rules.SimplifyComparisonPredicate;
 import org.apache.doris.nereids.rules.expression.rules.SimplifyConflictCompound;
 import org.apache.doris.nereids.rules.expression.rules.SimplifyInPredicate;
@@ -60,7 +59,6 @@ public class ExpressionOptimization extends ExpressionRewrite {
                     ReplaceNullWithFalseForCond.INSTANCE,
                     DateFunctionRewrite.INSTANCE,
                     ArrayContainToArrayOverlap.INSTANCE,
-                    SimplifyCaseWhenLike.INSTANCE,
                     NestedCaseWhenCondToLiteral.INSTANCE,
                     TopnToMax.INSTANCE,
                     NullSafeEqualToEqual.INSTANCE,
