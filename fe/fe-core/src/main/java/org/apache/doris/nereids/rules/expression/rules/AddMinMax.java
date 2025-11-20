@@ -40,10 +40,12 @@ import org.apache.doris.nereids.trees.expressions.GreaterThan;
 import org.apache.doris.nereids.trees.expressions.GreaterThanEqual;
 import org.apache.doris.nereids.trees.expressions.LessThan;
 import org.apache.doris.nereids.trees.expressions.LessThanEqual;
+import org.apache.doris.nereids.trees.expressions.Slot;
 import org.apache.doris.nereids.trees.expressions.SlotReference;
 import org.apache.doris.nereids.trees.expressions.literal.BooleanLiteral;
 import org.apache.doris.nereids.trees.expressions.literal.ComparableLiteral;
 import org.apache.doris.nereids.trees.expressions.literal.Literal;
+import org.apache.doris.nereids.trees.plans.logical.LogicalJoin;
 import org.apache.doris.nereids.util.ExpressionUtils;
 import org.apache.doris.nereids.util.PlanUtils;
 
@@ -70,7 +72,8 @@ import java.util.stream.Collectors;
  * a between 10 and 20 and b between 10 and 20 or a between 100 and 200 and b between 100 and 200
  *   => (a <= 20 and b <= 20 or a >= 100 and b >= 100) and a >= 10 and a <= 200 and b >= 10 and b <= 200
  */
-public class AddMinMax implements ExpressionPatternRuleFactory, ValueDescVisitor<Map<Expression, MinMaxValue>, Void> {
+public class AddMinMax implements ExpressionPatternRuleFactory,
+        ValueDescVisitor<Map<Expression, MinMaxValue>, ExpressionRewriteContext> {
     public static final AddMinMax INSTANCE = new AddMinMax();
 
     @Override
@@ -83,10 +86,9 @@ public class AddMinMax implements ExpressionPatternRuleFactory, ValueDescVisitor
         );
     }
 
-    /** rewrite */
-    public Expression rewrite(CompoundPredicate expr, ExpressionRewriteContext context) {
+    private Expression rewrite(CompoundPredicate expr, ExpressionRewriteContext context) {
         ValueDesc valueDesc = (new RangeInference()).getValue(expr, context);
-        Map<Expression, MinMaxValue> exprMinMaxValues = valueDesc.accept(this, null);
+        Map<Expression, MinMaxValue> exprMinMaxValues = valueDesc.accept(this, context);
         removeUnnecessaryMinMaxValues(expr, exprMinMaxValues);
         if (!exprMinMaxValues.isEmpty()) {
             return addExprMinMaxValues(expr, context, exprMinMaxValues);
@@ -285,57 +287,68 @@ public class AddMinMax implements ExpressionPatternRuleFactory, ValueDescVisitor
         return MatchMinMax.MATCH_NONE;
     }
 
-    private boolean isExprNeedAddMinMax(Expression expr) {
-        return (expr instanceof SlotReference) && ((SlotReference) expr).getOriginalColumn().isPresent();
+    private boolean isExprNeedAddMinMax(Expression expr, ExpressionRewriteContext context) {
+        // olap table column
+        if ((expr instanceof SlotReference) && ((SlotReference) expr).getOriginalColumn().isPresent()) {
+            return true;
+        } else if (context.plan.orElse(null) instanceof LogicalJoin) {
+            LogicalJoin<?, ?> join = (LogicalJoin<?, ?>) context.plan.get();
+            Set<Slot> inputSlots = expr.getInputSlots();
+            return !inputSlots.isEmpty() && (join.left().getOutputSet().containsAll(inputSlots)
+                    || join.right().getOutputSet().containsAll(inputSlots));
+        } else {
+            return false;
+        }
     }
 
     @Override
-    public Map<Expression, MinMaxValue> visitEmptyValue(EmptyValue value, Void context) {
+    public Map<Expression, MinMaxValue> visitEmptyValue(EmptyValue value, ExpressionRewriteContext context) {
         Expression reference = value.getReference();
         Map<Expression, MinMaxValue> exprMinMaxValues = Maps.newHashMap();
-        if (isExprNeedAddMinMax(reference)) {
+        if (isExprNeedAddMinMax(reference, context)) {
             exprMinMaxValues.put(reference, new MinMaxValue(null, true, 0));
         }
         return exprMinMaxValues;
     }
 
     @Override
-    public Map<Expression, MinMaxValue> visitDiscreteValue(DiscreteValue value, Void context) {
+    public Map<Expression, MinMaxValue> visitDiscreteValue(DiscreteValue value, ExpressionRewriteContext context) {
         Expression reference = value.getReference();
         Map<Expression, MinMaxValue> exprMinMaxValues = Maps.newHashMap();
-        if (isExprNeedAddMinMax(reference)) {
+        if (isExprNeedAddMinMax(reference, context)) {
             exprMinMaxValues.put(reference, new MinMaxValue(Range.encloseAll(value.getValues()), true, 0));
         }
         return exprMinMaxValues;
     }
 
     @Override
-    public Map<Expression, MinMaxValue> visitNotDiscreteValue(NotDiscreteValue value, Void context) {
+    public Map<Expression, MinMaxValue> visitNotDiscreteValue(NotDiscreteValue value,
+            ExpressionRewriteContext context) {
         return ImmutableMap.of();
     }
 
     @Override
-    public Map<Expression, MinMaxValue> visitIsNullValue(IsNullValue value, Void context) {
+    public Map<Expression, MinMaxValue> visitIsNullValue(IsNullValue value, ExpressionRewriteContext context) {
         return ImmutableMap.of();
     }
 
     @Override
-    public Map<Expression, MinMaxValue> visitIsNotNullValue(IsNotNullValue value, Void context) {
+    public Map<Expression, MinMaxValue> visitIsNotNullValue(IsNotNullValue value, ExpressionRewriteContext context) {
         return ImmutableMap.of();
     }
 
     @Override
-    public Map<Expression, MinMaxValue> visitRangeValue(RangeValue value, Void context) {
+    public Map<Expression, MinMaxValue> visitRangeValue(RangeValue value, ExpressionRewriteContext context) {
         Expression reference = value.getReference();
         Map<Expression, MinMaxValue> exprMinMaxValues = Maps.newHashMap();
-        if (isExprNeedAddMinMax(reference)) {
+        if (isExprNeedAddMinMax(reference, context)) {
             exprMinMaxValues.put(reference, new MinMaxValue(value.getRange(), false, 0));
         }
         return exprMinMaxValues;
     }
 
     @Override
-    public Map<Expression, MinMaxValue> visitCompoundValue(CompoundValue valueDesc, Void context) {
+    public Map<Expression, MinMaxValue> visitCompoundValue(CompoundValue valueDesc, ExpressionRewriteContext context) {
         List<ValueDesc> sourceValues = valueDesc.getSourceValues();
         Map<Expression, MinMaxValue> result = Maps.newHashMap(sourceValues.get(0).accept(this, context));
         int nextExprOrderIndex = result.values().stream().mapToInt(k -> k.exprOrderIndex).max().orElse(0);
@@ -411,7 +424,7 @@ public class AddMinMax implements ExpressionPatternRuleFactory, ValueDescVisitor
     }
 
     @Override
-    public Map<Expression, MinMaxValue> visitUnknownValue(UnknownValue valueDesc, Void context) {
+    public Map<Expression, MinMaxValue> visitUnknownValue(UnknownValue valueDesc, ExpressionRewriteContext context) {
         return ImmutableMap.of();
     }
 }
