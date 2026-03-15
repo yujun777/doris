@@ -39,7 +39,7 @@ import java.util.Set;
  * <p>Subclass hierarchy:
  * <pre>
  * IVMDeltaPlanner (this class)
- *   └─ AbstractNereidsIVMDeltaPlanner
+ *   └─ AbstractIVMDeltaPlanner
  *        └─ IVMScanDeltaPlanner
  *        └─ IVMJoinDeltaPlanner
  *        └─ IVMAggDeltaPlanner

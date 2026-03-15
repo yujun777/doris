@@ -23,19 +23,19 @@ import org.apache.doris.nereids.trees.plans.Plan;
 import java.util.Map;
 
 /**
- * Abstract intermediate class for Nereids-based IVM delta planners.
+ * Abstract intermediate class for IVM delta planners.
  *
  * <p>Holds references to {@link IVMBaseScanRewriter} and
  * {@link IVMDeltaCommandBuilder}, and delegates scan replacement and
  * snapshot binding to the rewriter. Pattern-specific logic is left
  * to concrete subclasses.
  */
-public abstract class AbstractNereidsIVMDeltaPlanner extends IVMDeltaPlanner {
+public abstract class AbstractIVMDeltaPlanner extends IVMDeltaPlanner {
 
     protected final IVMBaseScanRewriter scanRewriter;
     protected final IVMDeltaCommandBuilder commandBuilder;
 
-    protected AbstractNereidsIVMDeltaPlanner(
+    protected AbstractIVMDeltaPlanner(
             IVMBaseScanRewriter scanRewriter,
             IVMDeltaCommandBuilder commandBuilder) {
         this.scanRewriter = scanRewriter;

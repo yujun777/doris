@@ -38,7 +38,7 @@ import java.util.List;
  *   <li>If stream supports deletes: DELETE plan for removed rows</li>
  * </ul>
  */
-public class IVMScanDeltaPlanner extends AbstractNereidsIVMDeltaPlanner {
+public class IVMScanDeltaPlanner extends AbstractIVMDeltaPlanner {
 
     public IVMScanDeltaPlanner(
             IVMBaseScanRewriter scanRewriter,

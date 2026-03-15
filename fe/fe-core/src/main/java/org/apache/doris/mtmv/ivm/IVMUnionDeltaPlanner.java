@@ -45,7 +45,7 @@ import java.util.List;
  *       driving table per bundle</li>
  * </ul>
  */
-public class IVMUnionDeltaPlanner extends AbstractNereidsIVMDeltaPlanner {
+public class IVMUnionDeltaPlanner extends AbstractIVMDeltaPlanner {
 
     public IVMUnionDeltaPlanner(
             IVMBaseScanRewriter scanRewriter,

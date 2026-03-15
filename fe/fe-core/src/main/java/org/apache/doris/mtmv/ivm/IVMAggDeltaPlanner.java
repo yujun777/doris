@@ -56,7 +56,7 @@ import java.util.stream.Collectors;
  *   <li>{@code min/max} with delete/update triggers fallback to full refresh</li>
  * </ul>
  */
-public class IVMAggDeltaPlanner extends AbstractNereidsIVMDeltaPlanner {
+public class IVMAggDeltaPlanner extends AbstractIVMDeltaPlanner {
 
     public IVMAggDeltaPlanner(
             IVMBaseScanRewriter scanRewriter,

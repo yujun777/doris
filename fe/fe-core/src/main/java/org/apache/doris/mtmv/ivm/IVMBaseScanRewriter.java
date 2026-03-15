@@ -17,48 +17,150 @@
 
 package org.apache.doris.mtmv.ivm;
 
+import org.apache.doris.catalog.TableIf;
+import org.apache.doris.nereids.analyzer.UnboundTVFRelation;
+import org.apache.doris.nereids.trees.expressions.Properties;
+import org.apache.doris.nereids.trees.expressions.StatementScopeIdGenerator;
 import org.apache.doris.nereids.trees.plans.Plan;
+import org.apache.doris.nereids.trees.plans.logical.LogicalCatalogRelation;
+import org.apache.doris.nereids.trees.plans.visitor.DefaultPlanRewriter;
 
+import java.util.List;
 import java.util.Map;
 
 /**
- * Interface for rewriting Nereids plan trees during IVM delta planning.
+ * Rewrites Nereids plan trees during IVM delta planning.
  *
  * <p>Responsible for two operations:
  * <ul>
  *   <li>Replacing a driving table's scan node with a stream TVF relation</li>
  *   <li>Binding non-driving base tables to consistent snapshots</li>
  * </ul>
+ *
+ * <p>The input plan is the output of {@link IVMCreateSqlRewriter}, which wraps
+ * scan nodes in {@link org.apache.doris.nereids.trees.plans.logical.LogicalProject}
+ * nodes to carry the {@code __ivm_row_id__} column. This rewriter walks through
+ * the full plan tree using {@link DefaultPlanRewriter} and matches scan nodes
+ * by comparing the scan's table info against the target {@link BaseTableId}.
  */
-public interface IVMBaseScanRewriter {
+public class IVMBaseScanRewriter {
 
     /**
      * Replaces the driving table's scan node in the MV plan with an
-     * {@code UnboundTVFRelation} representing the stream change feed.
+     * {@link UnboundTVFRelation} representing the stream change feed.
      *
-     * @param rewrittenMvPlan the original MV plan tree
+     * <p>Walks the plan tree using {@link DefaultPlanRewriter}, finds the
+     * {@link LogicalCatalogRelation} whose table matches the driving
+     * {@code BaseTableId}, and replaces it with an {@code UnboundTVFRelation}
+     * built from the {@link StreamRelationSpec}.
+     *
+     * @param rewrittenMvPlan the original MV plan tree (from IVMCreateSqlRewriter)
      * @param drivingTable the base table whose scan should be replaced
      * @param relationSpec the stream relation specification for the TVF
      * @return a new plan with the scan replaced
      */
-    Plan replaceDrivingTableWithStream(
+    public Plan replaceDrivingTableWithStream(
             Plan rewrittenMvPlan,
             BaseTableId drivingTable,
-            StreamRelationSpec relationSpec);
+            StreamRelationSpec relationSpec) {
+        ScanReplacerRewriter rewriter = new ScanReplacerRewriter(drivingTable, relationSpec);
+        return rewrittenMvPlan.accept(rewriter, null);
+    }
 
     /**
      * Binds non-driving base table scans to their consistent snapshots.
      *
-     * <p>For external tables (Iceberg/Paimon), this may rewrite scan nodes
-     * to include snapshot parameters. For Doris internal tables, snapshot
-     * information is saved in {@link DeltaPlanBundle} for the executor
-     * to set via {@code StatementContext.setSnapshot()}.
+     * <p>For Doris internal tables, snapshot binding is handled by the executor
+     * via {@code StatementContext} — the snapshot information is carried in
+     * {@link DeltaPlanBundle#getTableSnapshots()} and applied at execution time.
+     * The plan tree itself does not need modification for internal tables.
+     *
+     * <p>For external tables (Iceberg/Paimon), this may need to rewrite scan
+     * nodes to include snapshot parameters in the future.
      *
      * @param replacedPlan the plan after stream replacement
      * @param tableSnapshots snapshot bindings for non-driving tables
-     * @return the plan with snapshot bindings applied
+     * @return the plan with snapshot bindings applied (currently identity for
+     *         internal tables)
      */
-    Plan bindBaseTableSnapshots(
+    public Plan bindBaseTableSnapshots(
             Plan replacedPlan,
-            Map<BaseTableId, IVMTableSnapshot> tableSnapshots);
+            Map<BaseTableId, IVMTableSnapshot> tableSnapshots) {
+        // For Doris internal tables, snapshot binding is handled at execution
+        // time by the executor setting StatementContext snapshots.
+        // TODO: For external tables (Iceberg/Paimon), rewrite scan nodes to
+        //       include snapshot parameters (e.g., snapshot-id, timestamp).
+        return replacedPlan;
+    }
+
+    /**
+     * Checks whether a {@link LogicalCatalogRelation}'s table matches the
+     * given {@link BaseTableId}.
+     *
+     * <p>Matching is done by comparing catalog name, database name, and table
+     * name from the scan's qualifier and table object against the BaseTableInfo
+     * stored in the BaseTableId.
+     */
+    private static boolean matchesTable(
+            LogicalCatalogRelation relation, BaseTableId targetTableId) {
+        TableIf table = relation.getTable();
+        List<String> qualifier = relation.getQualifier();
+
+        String ctlName = qualifier.size() >= 1 ? qualifier.get(0) : "";
+        String dbName = qualifier.size() >= 2 ? qualifier.get(1) : "";
+        String tableName = table.getName();
+
+        return tableName.equalsIgnoreCase(targetTableId.getTableInfo().getTableName())
+                && dbName.equalsIgnoreCase(targetTableId.getTableInfo().getDbName())
+                && ctlName.equalsIgnoreCase(targetTableId.getTableInfo().getCtlName());
+    }
+
+    /**
+     * A {@link DefaultPlanRewriter} that replaces the first matching
+     * {@link LogicalCatalogRelation} with an {@link UnboundTVFRelation}.
+     */
+    private static class ScanReplacerRewriter extends DefaultPlanRewriter<Void> {
+        private final BaseTableId targetTableId;
+        private final StreamRelationSpec relationSpec;
+        private boolean replaced = false;
+
+        ScanReplacerRewriter(BaseTableId targetTableId, StreamRelationSpec relationSpec) {
+            this.targetTableId = targetTableId;
+            this.relationSpec = relationSpec;
+        }
+
+        @Override
+        public Plan visit(Plan plan, Void context) {
+            if (replaced) {
+                return plan;
+            }
+            if (plan instanceof LogicalCatalogRelation) {
+                return visitLogicalCatalogRelation((LogicalCatalogRelation) plan, context);
+            }
+            return super.visit(plan, context);
+        }
+
+        private Plan visitLogicalCatalogRelation(LogicalCatalogRelation relation, Void context) {
+            if (replaced) {
+                return relation;
+            }
+            if (matchesTable(relation, targetTableId)) {
+                replaced = true;
+                return new UnboundTVFRelation(
+                        StatementScopeIdGenerator.newRelationId(),
+                        relationSpec.getFunctionName(),
+                        new Properties(relationSpec.getProperties()));
+            }
+            return relation;
+        }
+
+        @Override
+        public Plan visitPhysicalStorageLayerAggregate(
+                org.apache.doris.nereids.trees.plans.physical.PhysicalStorageLayerAggregate
+                        storageLayerAggregate,
+                Void context) {
+            // Not applicable for logical plan rewriting
+            return storageLayerAggregate;
+        }
+    }
 }

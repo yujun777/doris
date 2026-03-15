@@ -49,7 +49,7 @@ import java.util.List;
  *   <li>Build write-back plans (INSERT + optional DELETE)</li>
  * </ol>
  */
-public class IVMJoinDeltaPlanner extends AbstractNereidsIVMDeltaPlanner {
+public class IVMJoinDeltaPlanner extends AbstractIVMDeltaPlanner {
 
     public IVMJoinDeltaPlanner(
             IVMBaseScanRewriter scanRewriter,
