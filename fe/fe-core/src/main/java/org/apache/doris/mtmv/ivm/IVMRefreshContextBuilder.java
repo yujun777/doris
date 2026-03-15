@@ -19,21 +19,31 @@ package org.apache.doris.mtmv.ivm;
 
 import org.apache.doris.catalog.MTMV;
 import org.apache.doris.common.AnalysisException;
+import org.apache.doris.mtmv.BaseTableInfo;
+import org.apache.doris.mtmv.MTMVCache;
+import org.apache.doris.mtmv.MTMVPlanUtil;
 import org.apache.doris.mtmv.MTMVRefreshContext;
+import org.apache.doris.nereids.trees.plans.Plan;
+import org.apache.doris.qe.ConnectContext;
+
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Set;
 
 /**
  * Builds an {@link IVMRefreshContext} for one incremental refresh execution.
  *
  * <p>Responsibilities:
  * <ol>
- *   <li>Read the MV definition and produce the runtime rewritten plan</li>
+ *   <li>Read the MV definition and produce the runtime rewritten plan
+ *       from {@link MTMVCache}</li>
  *   <li>Read base-table-to-stream bindings from {@link IVMInfo}</li>
- *   <li>Determine a stable base table order</li>
+ *   <li>Determine a stable base table order from the MV's relation metadata</li>
  *   <li>Construct the {@link IVMRefreshContext} without opening subscriptions
  *       or performing delta planning</li>
  * </ol>
  */
-public interface IVMRefreshContextBuilder {
+public class IVMRefreshContextBuilder {
 
     /**
      * Builds the IVM refresh context.
@@ -44,8 +54,51 @@ public interface IVMRefreshContextBuilder {
      * @return a new IVM refresh context ready for plan analysis and delta planning
      * @throws AnalysisException if the context cannot be built
      */
-    IVMRefreshContext build(
+    public IVMRefreshContext build(
             MTMV mtmv,
             IVMInfo ivmInfo,
-            MTMVRefreshContext baseContext) throws AnalysisException;
+            MTMVRefreshContext baseContext) throws AnalysisException {
+        Plan rewrittenMvPlan = loadRewrittenMvPlan(mtmv);
+        List<BaseTableId> baseTableOrder = buildBaseTableOrder(mtmv, ivmInfo);
+        return new IVMRefreshContext(baseContext, rewrittenMvPlan, baseTableOrder);
+    }
+
+    /**
+     * Loads the rewritten MV plan from the MTMV cache.
+     * Uses the original final plan which preserves the logical structure
+     * needed for delta planning.
+     */
+    private Plan loadRewrittenMvPlan(MTMV mtmv) throws AnalysisException {
+        try {
+            ConnectContext ctx = MTMVPlanUtil.createMTMVContext(
+                    mtmv, MTMVPlanUtil.DISABLE_RULES_WHEN_RUN_MTMV_TASK);
+            MTMVCache cache = mtmv.getOrGenerateCache(ctx);
+            return cache.getOriginalFinalPlan();
+        } catch (org.apache.doris.nereids.exceptions.AnalysisException e) {
+            throw new AnalysisException(
+                    "Failed to load rewritten MV plan for " + mtmv.getName(), e);
+        }
+    }
+
+    /**
+     * Builds a stable, deterministic ordering of base tables for delta planning.
+     *
+     * <p>The order is derived from the base tables registered in the MV's
+     * relation metadata. Only tables that have stream bindings in {@link IVMInfo}
+     * are included. The order is deterministic (sorted by table info) to ensure
+     * consistent before/after snapshot assignment across refreshes.
+     */
+    private List<BaseTableId> buildBaseTableOrder(MTMV mtmv, IVMInfo ivmInfo) {
+        Set<BaseTableInfo> baseTables = mtmv.getRelation().getBaseTables();
+        List<BaseTableId> order = new ArrayList<>();
+        for (BaseTableInfo tableInfo : baseTables) {
+            BaseTableId tableId = new BaseTableId(tableInfo);
+            if (ivmInfo.getBaseTableStreams().containsKey(tableId)) {
+                order.add(tableId);
+            }
+        }
+        // Sort for deterministic ordering across refreshes
+        order.sort((a, b) -> a.toString().compareTo(b.toString()));
+        return order;
+    }
 }

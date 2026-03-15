@@ -125,7 +125,7 @@ public class IVMManager {
             deltaExecutor.execute(mtmv, context, bundles);
 
             // Success: update refresh snapshot and clear in-progress flag
-            mtmv.updateRefreshSnapshot(context.toRefreshSnapshot());
+            mtmv.setRefreshSnapshot(context.toRefreshSnapshot());
             ivmInfo.setInIncrementalRefresh(false);
             // TODO: writeEditLog(mtmv) to persist completed state
             LOG.info("Incremental refresh succeeded for MV {}", mtmv.getName());

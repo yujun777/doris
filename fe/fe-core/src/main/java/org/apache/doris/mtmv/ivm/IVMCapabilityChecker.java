@@ -19,14 +19,20 @@ package org.apache.doris.mtmv.ivm;
 
 import org.apache.doris.catalog.MTMV;
 
+import java.util.Map;
+
 /**
  * Checks whether incremental refresh is viable for a materialized view.
  *
- * <p>This checker inspects base table capabilities, stream health, plan pattern
- * support, retraction safety, and binlog availability to decide if incremental
- * refresh can proceed.
+ * <p>Performs a series of checks:
+ * <ol>
+ *   <li>Previous run must have completed (no lingering in-progress state)</li>
+ *   <li>Binlog must not be broken</li>
+ *   <li>Plan pattern must be supported</li>
+ *   <li>All base tables must have stream bindings</li>
+ * </ol>
  */
-public interface IVMCapabilityChecker {
+public class IVMCapabilityChecker {
 
     /**
      * Checks whether the given MV can be incrementally refreshed in the
@@ -37,5 +43,42 @@ public interface IVMCapabilityChecker {
      * @return result indicating whether incremental refresh is viable,
      *         with a fallback reason if not
      */
-    IVMCapabilityResult check(MTMV mtmv, IVMRefreshContext context);
+    public IVMCapabilityResult check(MTMV mtmv, IVMRefreshContext context) {
+        IVMInfo ivmInfo = mtmv.getIvmInfo();
+
+        // Check 1: previous run must have completed
+        if (ivmInfo.isInIncrementalRefresh()) {
+            return IVMCapabilityResult.unsupported(
+                    FallbackReason.PREVIOUS_RUN_INCOMPLETE,
+                    "Previous incremental refresh did not complete");
+        }
+
+        // Check 2: binlog must not be broken
+        if (ivmInfo.isBinlogBroken()) {
+            return IVMCapabilityResult.unsupported(
+                    FallbackReason.BINLOG_BROKEN,
+                    "Stream binlog is marked as broken");
+        }
+
+        // Check 3: plan pattern must be supported
+        IVMPlanAnalysis analysis = context.getPlanAnalysis();
+        if (analysis == null || analysis.getPattern() == IVMPlanPattern.UNSUPPORTED) {
+            return IVMCapabilityResult.unsupported(
+                    FallbackReason.PLAN_PATTERN_UNSUPPORTED,
+                    analysis != null ? analysis.getUnsupportedReason()
+                            : "Plan analysis not available");
+        }
+
+        // Check 4: all base tables must have stream bindings
+        Map<BaseTableId, IVMStreamRef> baseTableStreams = ivmInfo.getBaseTableStreams();
+        for (BaseTableId tableId : context.getBaseTableOrder()) {
+            if (!baseTableStreams.containsKey(tableId)) {
+                return IVMCapabilityResult.unsupported(
+                        FallbackReason.STREAM_UNSUPPORTED,
+                        "No stream binding found for base table: " + tableId);
+            }
+        }
+
+        return IVMCapabilityResult.ok();
+    }
 }
