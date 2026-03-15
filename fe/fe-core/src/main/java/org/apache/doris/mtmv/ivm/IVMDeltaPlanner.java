@@ -41,7 +41,9 @@ import java.util.Set;
  * IVMDeltaPlanner (this class)
  *   └─ AbstractNereidsIVMDeltaPlanner
  *        └─ IVMScanDeltaPlanner
- *        └─ (future: IVMJoinDeltaPlanner, IVMAggDeltaPlanner, IVMUnionDeltaPlanner)
+ *        └─ IVMJoinDeltaPlanner
+ *        └─ IVMAggDeltaPlanner
+ *        └─ (future: IVMUnionDeltaPlanner)
  * </pre>
  */
 public abstract class IVMDeltaPlanner {
