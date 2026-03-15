@@ -135,32 +135,17 @@ public class IVMBaseScanRewriter {
                 return plan;
             }
             if (plan instanceof LogicalCatalogRelation) {
-                return visitLogicalCatalogRelation((LogicalCatalogRelation) plan, context);
-            }
-            return super.visit(plan, context);
-        }
-
-        private Plan visitLogicalCatalogRelation(LogicalCatalogRelation relation, Void context) {
-            if (replaced) {
+                LogicalCatalogRelation relation = (LogicalCatalogRelation) plan;
+                if (matchesTable(relation, targetTableId)) {
+                    replaced = true;
+                    return new UnboundTVFRelation(
+                            StatementScopeIdGenerator.newRelationId(),
+                            relationSpec.getFunctionName(),
+                            new Properties(relationSpec.getProperties()));
+                }
                 return relation;
             }
-            if (matchesTable(relation, targetTableId)) {
-                replaced = true;
-                return new UnboundTVFRelation(
-                        StatementScopeIdGenerator.newRelationId(),
-                        relationSpec.getFunctionName(),
-                        new Properties(relationSpec.getProperties()));
-            }
-            return relation;
-        }
-
-        @Override
-        public Plan visitPhysicalStorageLayerAggregate(
-                org.apache.doris.nereids.trees.plans.physical.PhysicalStorageLayerAggregate
-                        storageLayerAggregate,
-                Void context) {
-            // Not applicable for logical plan rewriting
-            return storageLayerAggregate;
+            return super.visit(plan, context);
         }
     }
 }
