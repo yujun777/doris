@@ -135,6 +135,7 @@ public class MTMVTask extends AbstractTask {
     public enum MTMVTaskRefreshMode {
         COMPLETE,
         PARTIAL,
+        INCREMENTAL,
         NOT_REFRESH
     }
 

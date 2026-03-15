@@ -15,54 +15,31 @@
 // specific language governing permissions and limitations
 // under the License.
 
-package org.apache.doris.mtmv;
+package org.apache.doris.mtmv.ivm;
 
-/**
- * refresh enum
- */
-public class MTMVRefreshEnum {
+/** Result of IVM plan analysis. */
+public class IVMPlanAnalysis {
+    private IVMPlanPattern pattern;
+    private String unsupportedReason;
 
-    /**
-     * RefreshMethod
-     */
-    public enum RefreshMethod {
-        COMPLETE, //complete
-        INCREMENTAL, //incremental only, fail if not possible
-        AUTO //try to update incrementally, if not possible, update in full
+    public IVMPlanAnalysis(IVMPlanPattern pattern, String unsupportedReason) {
+        this.pattern = pattern;
+        this.unsupportedReason = unsupportedReason;
     }
 
-    /**
-     * BuildMode
-     */
-    public enum BuildMode {
-        IMMEDIATE, //right now
-        DEFERRED // deferred
+    public IVMPlanPattern getPattern() {
+        return pattern;
     }
 
-    /**
-     * RefreshTrigger
-     */
-    public enum RefreshTrigger {
-        MANUAL, //manual
-        COMMIT, //manual
-        SCHEDULE // schedule
+    public void setPattern(IVMPlanPattern pattern) {
+        this.pattern = pattern;
     }
 
-    /**
-     * MTMVState
-     */
-    public enum MTMVState {
-        INIT,
-        NORMAL,
-        SCHEMA_CHANGE
+    public String getUnsupportedReason() {
+        return unsupportedReason;
     }
 
-    /**
-     * MTMVRefreshState
-     */
-    public enum MTMVRefreshState {
-        INIT,
-        FAIL,
-        SUCCESS
+    public void setUnsupportedReason(String unsupportedReason) {
+        this.unsupportedReason = unsupportedReason;
     }
 }

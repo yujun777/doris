@@ -18,6 +18,7 @@
 package org.apache.doris.job.extensions.mtmv;
 
 import org.apache.doris.job.extensions.mtmv.MTMVTask.MTMVTaskTriggerMode;
+import org.apache.doris.mtmv.MTMVRefreshEnum.RefreshMethod;
 
 import com.google.gson.annotations.SerializedName;
 
@@ -34,6 +35,12 @@ public class MTMVTaskContext {
     @SerializedName(value = "isComplete")
     private boolean isComplete;
 
+    @SerializedName(value = "rm")
+    private RefreshMethod requestedMethod;
+
+    @SerializedName(value = "af")
+    private boolean allowFallback;
+
     public MTMVTaskContext(MTMVTaskTriggerMode triggerMode) {
         this.triggerMode = triggerMode;
     }
@@ -42,6 +49,15 @@ public class MTMVTaskContext {
         this.triggerMode = triggerMode;
         this.partitions = partitions;
         this.isComplete = isComplete;
+    }
+
+    public MTMVTaskContext(MTMVTaskTriggerMode triggerMode, List<String> partitions, boolean isComplete,
+            RefreshMethod requestedMethod, boolean allowFallback) {
+        this.triggerMode = triggerMode;
+        this.partitions = partitions;
+        this.isComplete = isComplete;
+        this.requestedMethod = requestedMethod;
+        this.allowFallback = allowFallback;
     }
 
     public List<String> getPartitions() {
@@ -56,12 +72,22 @@ public class MTMVTaskContext {
         return isComplete;
     }
 
+    public RefreshMethod getRequestedMethod() {
+        return requestedMethod;
+    }
+
+    public boolean isAllowFallback() {
+        return allowFallback;
+    }
+
     @Override
     public String toString() {
         return "MTMVTaskContext{"
                 + "triggerMode=" + triggerMode
                 + ", partitions=" + partitions
                 + ", isComplete=" + isComplete
+                + ", requestedMethod=" + requestedMethod
+                + ", allowFallback=" + allowFallback
                 + '}';
     }
 }
