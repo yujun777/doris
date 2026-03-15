@@ -43,7 +43,7 @@ import java.util.Set;
  *        └─ IVMScanDeltaPlanner
  *        └─ IVMJoinDeltaPlanner
  *        └─ IVMAggDeltaPlanner
- *        └─ (future: IVMUnionDeltaPlanner)
+ *        └─ IVMUnionDeltaPlanner
  * </pre>
  */
 public abstract class IVMDeltaPlanner {
