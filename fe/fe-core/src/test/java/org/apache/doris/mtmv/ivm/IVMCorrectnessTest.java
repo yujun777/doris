@@ -20,8 +20,10 @@ package org.apache.doris.mtmv.ivm;
 import org.apache.doris.analysis.TableSnapshot;
 import org.apache.doris.catalog.MTMV;
 import org.apache.doris.catalog.OlapTable;
+import org.apache.doris.catalog.TableIf;
 import org.apache.doris.common.AnalysisException;
 import org.apache.doris.datasource.ExternalTable;
+import org.apache.doris.mtmv.MTMVUtil;
 import org.apache.doris.mtmv.BaseTableInfo;
 import org.apache.doris.mtmv.MTMVRefreshContext;
 import org.apache.doris.mtmv.MTMVRefreshSnapshot;
@@ -34,7 +36,9 @@ import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.Maps;
 import mockit.Expectations;
+import mockit.Mock;
 import mockit.Mocked;
+import mockit.MockUp;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Test;
 
@@ -65,6 +69,94 @@ public class IVMCorrectnessTest {
         };
 
         IVMRefreshContext context = new IVMRefreshContext(null, null, ImmutableList.of(firstTable, secondTable));
+        context.setPlanAnalysis(new IVMPlanAnalysis(IVMPlanPattern.SCAN_ONLY, null));
+
+        IVMCapabilityResult result = new IVMCapabilityChecker().check(mtmv, context);
+        Assertions.assertFalse(result.isIncremental());
+        Assertions.assertEquals(FallbackReason.STREAM_UNSUPPORTED, result.getFallbackReason());
+    }
+
+    @Test
+    public void testCapabilityRejectsMultiBaseLogicalOlapScanSnapshotBinding(
+            @Mocked MTMV mtmv,
+            @Mocked OlapTable firstTable,
+            @Mocked BaseTableInfo firstTableInfo,
+            @Mocked BaseTableInfo secondTableInfo) {
+        BaseTableId firstTableId = new BaseTableId(firstTableInfo);
+        BaseTableId secondTableId = new BaseTableId(secondTableInfo);
+        IVMInfo ivmInfo = new IVMInfo();
+        Map<BaseTableId, IVMStreamRef> streamBindings = Maps.newHashMap();
+        streamBindings.put(firstTableId, new IVMStreamRef(StreamType.OLAP, "consumer-1", ImmutableMap.of()));
+        streamBindings.put(secondTableId, new IVMStreamRef(StreamType.OLAP, "consumer-2", ImmutableMap.of()));
+        ivmInfo.setBaseTableStreams(streamBindings);
+
+        new Expectations() {
+            {
+                mtmv.getIvmInfo();
+                result = ivmInfo;
+
+                firstTable.getPartitionIds();
+                result = ImmutableList.of();
+                minTimes = 0;
+                firstTable.getBaseIndexId();
+                result = 1L;
+                minTimes = 0;
+                firstTable.getName();
+                result = "t1";
+                minTimes = 0;
+
+                firstTableInfo.getCtlName();
+                result = "ctl";
+                minTimes = 0;
+                firstTableInfo.getDbName();
+                result = "db";
+                minTimes = 0;
+                firstTableInfo.getTableName();
+                result = "t1";
+                minTimes = 0;
+            }
+        };
+        new MockUp<MTMVUtil>() {
+            @Mock
+            public TableIf getTable(BaseTableInfo input) {
+                return firstTable;
+            }
+        };
+
+        LogicalOlapScan plan = new LogicalOlapScan(StatementScopeIdGenerator.newRelationId(), firstTable,
+                ImmutableList.of("ctl", "db"));
+        IVMRefreshContext context = new IVMRefreshContext(null, plan, ImmutableList.of(firstTableId, secondTableId));
+        context.setPlanAnalysis(new IVMPlanAnalysis(IVMPlanPattern.INNER_JOIN, null));
+
+        IVMCapabilityResult result = new IVMCapabilityChecker().check(mtmv, context);
+        Assertions.assertFalse(result.isIncremental());
+        Assertions.assertEquals(FallbackReason.SNAPSHOT_ALIGNMENT_UNSUPPORTED, result.getFallbackReason());
+    }
+
+    @Test
+    public void testCapabilityRejectsExternalBaseTable(
+            @Mocked MTMV mtmv,
+            @Mocked ExternalTable externalTable,
+            @Mocked BaseTableInfo tableInfo) {
+        BaseTableId tableId = new BaseTableId(tableInfo);
+        IVMInfo ivmInfo = new IVMInfo();
+        ivmInfo.setBaseTableStreams(ImmutableMap.of(
+                tableId, new IVMStreamRef(StreamType.PAIMON, "consumer-1", ImmutableMap.of())));
+
+        new Expectations() {
+            {
+                mtmv.getIvmInfo();
+                result = ivmInfo;
+            }
+        };
+        new MockUp<MTMVUtil>() {
+            @Mock
+            public TableIf getTable(BaseTableInfo input) {
+                return externalTable;
+            }
+        };
+
+        IVMRefreshContext context = new IVMRefreshContext(null, null, ImmutableList.of(tableId));
         context.setPlanAnalysis(new IVMPlanAnalysis(IVMPlanPattern.SCAN_ONLY, null));
 
         IVMCapabilityResult result = new IVMCapabilityChecker().check(mtmv, context);
