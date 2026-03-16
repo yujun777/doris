@@ -18,10 +18,12 @@
 package org.apache.doris.mtmv.ivm;
 
 import org.apache.doris.analysis.TableSnapshot;
+import org.apache.doris.catalog.DatabaseIf;
 import org.apache.doris.catalog.MTMV;
 import org.apache.doris.catalog.OlapTable;
 import org.apache.doris.catalog.TableIf;
 import org.apache.doris.common.AnalysisException;
+import org.apache.doris.datasource.CatalogIf;
 import org.apache.doris.datasource.ExternalTable;
 import org.apache.doris.mtmv.BaseTableInfo;
 import org.apache.doris.mtmv.MTMVRefreshContext;
@@ -239,6 +241,8 @@ public class IVMCorrectnessTest {
     @Test
     public void testBindBaseTableSnapshotsWritesTableSnapshotToLogicalFileScan(
             @Mocked ExternalTable externalTable,
+            @Mocked DatabaseIf database,
+            @Mocked CatalogIf catalog,
             @Mocked BaseTableInfo tableInfo) throws Exception {
         LogicalFileScan.SelectedPartitions selectedPartitions =
                 new LogicalFileScan.SelectedPartitions(1, ImmutableMap.of(), false);
@@ -250,6 +254,18 @@ public class IVMCorrectnessTest {
 
                 externalTable.getName();
                 result = "tbl";
+                minTimes = 0;
+                externalTable.getDatabase();
+                result = database;
+                minTimes = 0;
+                database.getCatalog();
+                result = catalog;
+                minTimes = 0;
+                catalog.getName();
+                result = "ctl";
+                minTimes = 0;
+                database.getFullName();
+                result = "db";
                 minTimes = 0;
 
                 tableInfo.getCtlName();
@@ -277,8 +293,64 @@ public class IVMCorrectnessTest {
     }
 
     @Test
+    public void testBindBaseTableSnapshotsMatchesSinglePartQualifier(
+            @Mocked ExternalTable externalTable,
+            @Mocked DatabaseIf database,
+            @Mocked CatalogIf catalog,
+            @Mocked BaseTableInfo tableInfo) throws Exception {
+        LogicalFileScan.SelectedPartitions selectedPartitions =
+                new LogicalFileScan.SelectedPartitions(1, ImmutableMap.of(), false);
+        new Expectations() {
+            {
+                externalTable.initSelectedPartitions((Optional) any);
+                result = selectedPartitions;
+                minTimes = 1;
+
+                externalTable.getName();
+                result = "tbl";
+                minTimes = 0;
+                externalTable.getDatabase();
+                result = database;
+                minTimes = 0;
+                database.getCatalog();
+                result = catalog;
+                minTimes = 0;
+                catalog.getName();
+                result = "ctl";
+                minTimes = 0;
+                database.getFullName();
+                result = "db";
+                minTimes = 0;
+
+                tableInfo.getCtlName();
+                result = "ctl";
+                minTimes = 0;
+                tableInfo.getDbName();
+                result = "db";
+                minTimes = 0;
+                tableInfo.getTableName();
+                result = "tbl";
+                minTimes = 0;
+            }
+        };
+
+        LogicalFileScan scan = new LogicalFileScan(StatementScopeIdGenerator.newRelationId(), externalTable,
+                ImmutableList.of("db"), ImmutableList.of(), Optional.empty(), Optional.empty(),
+                Optional.empty(), Optional.empty());
+        TableSnapshot tableSnapshot = TableSnapshot.versionOf("102");
+
+        LogicalFileScan rewritten = (LogicalFileScan) new IVMBaseScanRewriter().bindBaseTableSnapshots(scan,
+                ImmutableMap.of(new BaseTableId(tableInfo), new IVMVersionedTableSnapshot(
+                        Optional.of(tableSnapshot), Optional.empty(), Optional.empty())));
+        Assertions.assertTrue(rewritten.getTableSnapshot().isPresent());
+        Assertions.assertEquals("102", rewritten.getTableSnapshot().get().getValue());
+    }
+
+    @Test
     public void testBindBaseTableSnapshotsRejectsUnsupportedLogicalOlapScan(
             @Mocked OlapTable olapTable,
+            @Mocked DatabaseIf database,
+            @Mocked CatalogIf catalog,
             @Mocked BaseTableInfo tableInfo) {
         new Expectations() {
             {
@@ -290,6 +362,18 @@ public class IVMCorrectnessTest {
                 minTimes = 0;
                 olapTable.getName();
                 result = "tbl";
+                minTimes = 0;
+                olapTable.getDatabase();
+                result = database;
+                minTimes = 0;
+                database.getCatalog();
+                result = catalog;
+                minTimes = 0;
+                catalog.getName();
+                result = "ctl";
+                minTimes = 0;
+                database.getFullName();
+                result = "db";
                 minTimes = 0;
 
                 tableInfo.getCtlName();

@@ -27,7 +27,6 @@ import org.apache.doris.nereids.trees.plans.logical.LogicalCatalogRelation;
 import org.apache.doris.nereids.trees.plans.logical.SupportTableSnapshot;
 import org.apache.doris.nereids.trees.plans.visitor.DefaultPlanRewriter;
 
-import java.util.List;
 import java.util.Map;
 
 /**
@@ -43,7 +42,7 @@ import java.util.Map;
  * scan nodes in {@link org.apache.doris.nereids.trees.plans.logical.LogicalProject}
  * nodes to carry the {@code __ivm_row_id__} column. This rewriter walks through
  * the full plan tree using {@link DefaultPlanRewriter} and matches scan nodes
- * by comparing the scan's table info against the target {@link BaseTableId}.
+ * by comparing the scan's bound table metadata against the target {@link BaseTableId}.
  */
 public class IVMBaseScanRewriter {
 
@@ -100,16 +99,16 @@ public class IVMBaseScanRewriter {
      * given {@link BaseTableId}.
      *
      * <p>Matching is done by comparing catalog name, database name, and table
-     * name from the scan's qualifier and table object against the BaseTableInfo
-     * stored in the BaseTableId.
+     * name from the bound table metadata against the BaseTableInfo stored in
+     * the BaseTableId. The qualifier may contain 0/1/2 parts depending on how
+     * the relation was analyzed, so it is not a stable source for catalog/db
+     * resolution here.
      */
     private static boolean matchesTable(
             LogicalCatalogRelation relation, BaseTableId targetTableId) {
         TableIf table = relation.getTable();
-        List<String> qualifier = relation.getQualifier();
-
-        String ctlName = qualifier.size() >= 1 ? qualifier.get(0) : "";
-        String dbName = qualifier.size() >= 2 ? qualifier.get(1) : "";
+        String ctlName = table.getDatabase().getCatalog().getName();
+        String dbName = table.getDatabase().getFullName();
         String tableName = table.getName();
 
         return tableName.equalsIgnoreCase(targetTableId.getTableInfo().getTableName())
