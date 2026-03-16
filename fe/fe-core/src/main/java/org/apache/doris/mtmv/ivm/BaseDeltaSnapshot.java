@@ -28,12 +28,14 @@ public class BaseDeltaSnapshot {
     private final BaseTableId drivingTable;
     private final StreamRelationSpec relationSpec;
     private final Map<BaseTableId, IVMTableSnapshot> tableSnapshots;
+    private final StreamCapability drivingCapability;
 
     public BaseDeltaSnapshot(BaseTableId drivingTable, StreamRelationSpec relationSpec,
-            Map<BaseTableId, IVMTableSnapshot> tableSnapshots) {
+            Map<BaseTableId, IVMTableSnapshot> tableSnapshots, StreamCapability drivingCapability) {
         this.drivingTable = drivingTable;
         this.relationSpec = relationSpec;
         this.tableSnapshots = tableSnapshots;
+        this.drivingCapability = drivingCapability;
     }
 
     public BaseTableId getDrivingTable() {
@@ -46,6 +48,10 @@ public class BaseDeltaSnapshot {
 
     public Map<BaseTableId, IVMTableSnapshot> getTableSnapshots() {
         return tableSnapshots;
+    }
+
+    public StreamCapability getDrivingCapability() {
+        return drivingCapability;
     }
 
     @Override

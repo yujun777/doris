@@ -23,6 +23,7 @@ import org.apache.doris.mtmv.BaseTableInfo;
 import org.apache.doris.mtmv.MTMVCache;
 import org.apache.doris.mtmv.MTMVPlanUtil;
 import org.apache.doris.mtmv.MTMVRefreshContext;
+import org.apache.doris.mtmv.MTMVRelation;
 import org.apache.doris.nereids.trees.plans.Plan;
 import org.apache.doris.qe.ConnectContext;
 
@@ -88,14 +89,18 @@ public class IVMRefreshContextBuilder {
      * are included. The order is deterministic (sorted by table info) to ensure
      * consistent before/after snapshot assignment across refreshes.
      */
-    private List<BaseTableId> buildBaseTableOrder(MTMV mtmv, IVMInfo ivmInfo) {
-        Set<BaseTableInfo> baseTables = mtmv.getRelation().getBaseTables();
+    private List<BaseTableId> buildBaseTableOrder(MTMV mtmv, IVMInfo ivmInfo) throws AnalysisException {
+        MTMVRelation relation = mtmv.getRelation();
+        if (relation == null) {
+            throw new AnalysisException("MTMV relation metadata is required for incremental refresh");
+        }
+        Set<BaseTableInfo> baseTables = relation.getBaseTablesOneLevelAndFromView();
+        if (baseTables == null || baseTables.isEmpty()) {
+            throw new AnalysisException("Incremental refresh requires at least one base table relation");
+        }
         List<BaseTableId> order = new ArrayList<>();
         for (BaseTableInfo tableInfo : baseTables) {
-            BaseTableId tableId = new BaseTableId(tableInfo);
-            if (ivmInfo.getBaseTableStreams().containsKey(tableId)) {
-                order.add(tableId);
-            }
+            order.add(new BaseTableId(tableInfo));
         }
         // Sort for deterministic ordering across refreshes
         order.sort((a, b) -> a.toString().compareTo(b.toString()));

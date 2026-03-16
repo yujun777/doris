@@ -18,7 +18,13 @@
 package org.apache.doris.mtmv.ivm;
 
 import org.apache.doris.catalog.MTMV;
+import org.apache.doris.catalog.TableIf;
 import org.apache.doris.common.AnalysisException;
+import org.apache.doris.datasource.mvcc.MvccSnapshot;
+import org.apache.doris.datasource.mvcc.MvccTable;
+import org.apache.doris.mtmv.MTMVRelatedTableIf;
+import org.apache.doris.mtmv.MTMVSnapshotIf;
+import org.apache.doris.mtmv.MTMVUtil;
 import org.apache.doris.nereids.trees.plans.Plan;
 
 import java.util.ArrayList;
@@ -26,6 +32,7 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 
 /**
@@ -83,6 +90,13 @@ public abstract class IVMDeltaPlanner {
 
             processedTables.add(tableId);
         }
+        for (BaseTableId tableId : context.getBaseTableOrder()) {
+            StreamSubscription subscription = runtimeSubscriptions.computeIfAbsent(
+                    tableId,
+                    id -> openSubscriptionUnchecked(mtmv, id));
+            context.recordTargetTableSnapshot(tableId,
+                    resolveSnapshot(tableId, subscription.getReadableCursor(), subscription));
+        }
         return bundles;
     }
 
@@ -90,7 +104,8 @@ public abstract class IVMDeltaPlanner {
      * Builds the base delta plan by replacing the driving table's scan with
      * a stream relation and binding other base tables to their snapshots.
      */
-    protected final Plan buildBaseDeltaPlan(Plan mvPlan, BaseDeltaSnapshot baseDeltaSnapshot) {
+    protected final Plan buildBaseDeltaPlan(Plan mvPlan, BaseDeltaSnapshot baseDeltaSnapshot)
+            throws AnalysisException {
         Plan replacedPlan = replaceDrivingTableWithStream(
                 mvPlan,
                 baseDeltaSnapshot.getDrivingTable(),
@@ -117,7 +132,8 @@ public abstract class IVMDeltaPlanner {
                 subscription.getCommittedCursor(),
                 subscription.getReadableCursor());
 
-        return new BaseDeltaSnapshot(drivingTable, relationSpec, tableSnapshots);
+        return new BaseDeltaSnapshot(drivingTable, relationSpec, tableSnapshots,
+                subscription.getStream().getCapability());
     }
 
     /**
@@ -142,7 +158,7 @@ public abstract class IVMDeltaPlanner {
             StreamCursor cursor = processedTables.contains(tableId)
                     ? sub.getReadableCursor()
                     : sub.getCommittedCursor();
-            tableSnapshots.put(tableId, resolveSnapshot(cursor, sub));
+            tableSnapshots.put(tableId, resolveSnapshot(tableId, cursor, sub));
         }
         return tableSnapshots;
     }
@@ -178,9 +194,10 @@ public abstract class IVMDeltaPlanner {
     /**
      * Returns a snapshot of the base table at the given cursor position.
      */
-    protected IVMTableSnapshot resolveSnapshot(StreamCursor cursor,
+    protected IVMTableSnapshot resolveSnapshot(BaseTableId tableId, StreamCursor cursor,
             StreamSubscription subscription) throws AnalysisException {
-        return subscription.getStream().snapshotAt(cursor);
+        IVMTableSnapshot tableSnapshot = subscription.getStream().snapshotAt(cursor);
+        return enrichResolvedSnapshot(tableId, tableSnapshot);
     }
 
     /**
@@ -205,7 +222,7 @@ public abstract class IVMDeltaPlanner {
      */
     protected abstract Plan bindBaseTableSnapshots(
             Plan replacedPlan,
-            Map<BaseTableId, IVMTableSnapshot> tableSnapshots);
+            Map<BaseTableId, IVMTableSnapshot> tableSnapshots) throws AnalysisException;
 
     /**
      * Wrapper that converts checked AnalysisException to unchecked for use
@@ -217,5 +234,23 @@ public abstract class IVMDeltaPlanner {
         } catch (AnalysisException e) {
             throw new RuntimeException("Failed to open subscription for " + tableId, e);
         }
+    }
+
+    private IVMTableSnapshot enrichResolvedSnapshot(BaseTableId tableId, IVMTableSnapshot tableSnapshot)
+            throws AnalysisException {
+        TableIf table = MTMVUtil.getTable(tableId.getTableInfo());
+        if (!(table instanceof MTMVRelatedTableIf)) {
+            return tableSnapshot;
+        }
+        Optional<MvccSnapshot> mvccSnapshot = tableSnapshot.asMvccSnapshot();
+        if (!mvccSnapshot.isPresent() && table instanceof MvccTable && tableSnapshot.asTableSnapshot().isPresent()) {
+            mvccSnapshot = Optional.of(((MvccTable) table).loadSnapshot(
+                    tableSnapshot.asTableSnapshot(), Optional.empty()));
+        }
+        Optional<MTMVSnapshotIf> mtmvSnapshot = tableSnapshot.asMtmvSnapshot();
+        if (!mtmvSnapshot.isPresent()) {
+            mtmvSnapshot = Optional.of(((MTMVRelatedTableIf) table).getTableSnapshot(mvccSnapshot));
+        }
+        return new IVMVersionedTableSnapshot(tableSnapshot.asTableSnapshot(), mvccSnapshot, mtmvSnapshot);
     }
 }

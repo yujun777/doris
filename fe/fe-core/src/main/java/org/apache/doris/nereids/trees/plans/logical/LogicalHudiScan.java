@@ -216,6 +216,16 @@ public class LogicalHudiScan extends LogicalFileScan {
                 tableAlias, Optional.of(cachedOutputs));
     }
 
+    @Override
+    public LogicalHudiScan withTableSnapshot(TableSnapshot newTableSnapshot) {
+        SelectedPartitions snapshotSelectedPartitions = ((HMSExternalTable) table)
+                .initHudiSelectedPartitions(Optional.of(newTableSnapshot));
+        return new LogicalHudiScan(relationId, (ExternalTable) table, qualifier,
+                mergeSelectedPartitions(snapshotSelectedPartitions), tableSample, Optional.of(newTableSnapshot),
+                scanParams, incrementalRelation, operativeSlots, virtualColumns, Optional.empty(),
+                Optional.of(getLogicalProperties()), tableAlias, cachedOutputs);
+    }
+
     /**
      * Set scan params for incremental read
      *

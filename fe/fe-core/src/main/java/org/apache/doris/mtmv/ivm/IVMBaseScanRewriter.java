@@ -18,11 +18,13 @@
 package org.apache.doris.mtmv.ivm;
 
 import org.apache.doris.catalog.TableIf;
+import org.apache.doris.common.AnalysisException;
 import org.apache.doris.nereids.analyzer.UnboundTVFRelation;
 import org.apache.doris.nereids.trees.expressions.Properties;
 import org.apache.doris.nereids.trees.expressions.StatementScopeIdGenerator;
 import org.apache.doris.nereids.trees.plans.Plan;
 import org.apache.doris.nereids.trees.plans.logical.LogicalCatalogRelation;
+import org.apache.doris.nereids.trees.plans.logical.SupportTableSnapshot;
 import org.apache.doris.nereids.trees.plans.visitor.DefaultPlanRewriter;
 
 import java.util.List;
@@ -85,12 +87,12 @@ public class IVMBaseScanRewriter {
      */
     public Plan bindBaseTableSnapshots(
             Plan replacedPlan,
-            Map<BaseTableId, IVMTableSnapshot> tableSnapshots) {
-        // For Doris internal tables, snapshot binding is handled at execution
-        // time by the executor setting StatementContext snapshots.
-        // TODO: For external tables (Iceberg/Paimon), rewrite scan nodes to
-        //       include snapshot parameters (e.g., snapshot-id, timestamp).
-        return replacedPlan;
+            Map<BaseTableId, IVMTableSnapshot> tableSnapshots) throws AnalysisException {
+        try {
+            return replacedPlan.accept(new SnapshotBinderRewriter(tableSnapshots), null);
+        } catch (SnapshotBindingException e) {
+            throw e.analysisException;
+        }
     }
 
     /**
@@ -146,6 +148,54 @@ public class IVMBaseScanRewriter {
                 return relation;
             }
             return super.visit(plan, context);
+        }
+    }
+
+    private static class SnapshotBinderRewriter extends DefaultPlanRewriter<Void> {
+        private final Map<BaseTableId, IVMTableSnapshot> tableSnapshots;
+
+        SnapshotBinderRewriter(Map<BaseTableId, IVMTableSnapshot> tableSnapshots) {
+            this.tableSnapshots = tableSnapshots;
+        }
+
+        @Override
+        public Plan visit(Plan plan, Void context) {
+            if (plan instanceof LogicalCatalogRelation) {
+                LogicalCatalogRelation relation = (LogicalCatalogRelation) plan;
+                for (Map.Entry<BaseTableId, IVMTableSnapshot> entry : tableSnapshots.entrySet()) {
+                    if (!matchesTable(relation, entry.getKey())) {
+                        continue;
+                    }
+                    return bindSnapshot(relation, entry.getValue(), entry.getKey());
+                }
+                return relation;
+            }
+            return super.visit(plan, context);
+        }
+
+        private Plan bindSnapshot(LogicalCatalogRelation relation, IVMTableSnapshot tableSnapshot, BaseTableId tableId) {
+            if (relation instanceof SupportTableSnapshot) {
+                if (!tableSnapshot.asTableSnapshot().isPresent()) {
+                    throw new SnapshotBindingException(new AnalysisException(
+                            "Missing table snapshot binding for scan-capable base table: " + tableId));
+                }
+                return ((SupportTableSnapshot) relation).withTableSnapshot(tableSnapshot.asTableSnapshot().get());
+            }
+            if (!tableSnapshot.asMvccSnapshot().isPresent()) {
+                throw new SnapshotBindingException(new AnalysisException(
+                        "Plan node does not support snapshot binding for base table: " + tableId
+                                + ", relation=" + relation.getClass().getSimpleName()));
+            }
+            return relation;
+        }
+    }
+
+    private static class SnapshotBindingException extends RuntimeException {
+        private final AnalysisException analysisException;
+
+        SnapshotBindingException(AnalysisException analysisException) {
+            super(analysisException);
+            this.analysisException = analysisException;
         }
     }
 }

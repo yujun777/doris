@@ -23,30 +23,31 @@ import org.apache.doris.mtmv.MTMVSnapshotIf;
 
 import java.util.Optional;
 
-/**
- * A point-in-time snapshot of a base table, used by the IVM planner to
- * pin the non-driving tables at a consistent version during delta computation.
- *
- * <p>Implementations are provided by each stream connector.
- */
-public interface IVMTableSnapshot {
-    /** Returns the scan-level table snapshot when the plan tree can be rebound to a fixed version. */
-    default Optional<TableSnapshot> asTableSnapshot() {
-        return Optional.empty();
+/** Concrete table snapshot used by IVM once a stream snapshot has been fully resolved in FE. */
+public class IVMVersionedTableSnapshot implements IVMTableSnapshot {
+    private final Optional<TableSnapshot> tableSnapshot;
+    private final Optional<MvccSnapshot> mvccSnapshot;
+    private final Optional<MTMVSnapshotIf> mtmvSnapshot;
+
+    public IVMVersionedTableSnapshot(Optional<TableSnapshot> tableSnapshot,
+            Optional<MvccSnapshot> mvccSnapshot, Optional<MTMVSnapshotIf> mtmvSnapshot) {
+        this.tableSnapshot = tableSnapshot;
+        this.mvccSnapshot = mvccSnapshot;
+        this.mtmvSnapshot = mtmvSnapshot;
     }
 
-    /**
-     * Returns the FE MVCC snapshot to bind into {@code StatementContext} when
-     * the target table participates in FE-side consistent reads.
-     */
-    default Optional<MvccSnapshot> asMvccSnapshot() {
-        return Optional.empty();
+    @Override
+    public Optional<TableSnapshot> asTableSnapshot() {
+        return tableSnapshot;
     }
 
-    /**
-     * Returns the persisted MTMV snapshot marker corresponding to this table snapshot.
-     */
-    default Optional<MTMVSnapshotIf> asMtmvSnapshot() {
-        return Optional.empty();
+    @Override
+    public Optional<MvccSnapshot> asMvccSnapshot() {
+        return mvccSnapshot;
+    }
+
+    @Override
+    public Optional<MTMVSnapshotIf> asMtmvSnapshot() {
+        return mtmvSnapshot;
     }
 }

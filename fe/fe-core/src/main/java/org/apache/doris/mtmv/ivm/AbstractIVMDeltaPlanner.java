@@ -54,8 +54,17 @@ public abstract class AbstractIVMDeltaPlanner extends IVMDeltaPlanner {
     @Override
     protected final Plan bindBaseTableSnapshots(
             Plan replacedPlan,
-            Map<BaseTableId, IVMTableSnapshot> tableSnapshots) {
+            Map<BaseTableId, IVMTableSnapshot> tableSnapshots) throws AnalysisException {
         return scanRewriter.bindBaseTableSnapshots(replacedPlan, tableSnapshots);
+    }
+
+    protected final void validateAppendOnlyStream(BaseDeltaSnapshot baseDeltaSnapshot)
+            throws AnalysisException {
+        StreamCapability capability = baseDeltaSnapshot.getDrivingCapability();
+        if (!capability.isAppendOnly() || capability.isSupportsDelete()
+                || capability.isSupportsUpdate() || capability.isSupportsBeforeImage()) {
+            throw new AnalysisException("Incremental delta planning currently only supports append-only streams");
+        }
     }
 
     @Override

@@ -18,8 +18,12 @@
 package org.apache.doris.mtmv.ivm;
 
 import org.apache.doris.catalog.MTMV;
+import org.apache.doris.catalog.TableIf;
 import org.apache.doris.common.AnalysisException;
+import org.apache.doris.datasource.mvcc.MvccTable;
+import org.apache.doris.datasource.mvcc.MvccTableInfo;
 import org.apache.doris.mtmv.MTMVPlanUtil;
+import org.apache.doris.mtmv.MTMVUtil;
 import org.apache.doris.nereids.StatementContext;
 import org.apache.doris.nereids.glue.LogicalPlanAdapter;
 import org.apache.doris.nereids.trees.plans.Plan;
@@ -117,6 +121,7 @@ public class IVMDeltaExecutor {
         StatementContext statementContext = new StatementContext();
         prepareSnapshotContext(statementContext, bundle.getTableSnapshots());
         ctx.setStatementContext(statementContext);
+        ctx.setThreadLocalInfo();
 
         try {
             if (plan instanceof Command) {
@@ -152,18 +157,24 @@ public class IVMDeltaExecutor {
     /**
      * Prepares the statement context with snapshot bindings for consistent reads.
      *
-     * <p>For Doris internal tables, snapshots are set via
-     * {@link StatementContext#setSnapshot}. For external tables (Iceberg/Paimon),
-     * the planner has already written snapshot information into the plan tree's
-     * scan parameters, so no additional setup is needed here.
+     * <p>Snapshot-capable scans are rebound in the logical plan tree during delta
+     * planning. MVCC-only tables still need explicit bindings in
+     * {@link StatementContext} here.
      */
-    private void prepareSnapshotContext(
+    void prepareSnapshotContext(
             StatementContext statementContext,
-            Map<BaseTableId, IVMTableSnapshot> tableSnapshots) {
-        // TODO: convert IVMTableSnapshot to MvccTableInfo/MvccSnapshot pairs
-        // and call statementContext.setSnapshot() for each internal table.
-        // External table snapshots are already embedded in the plan tree
-        // by the scan rewriter.
+            Map<BaseTableId, IVMTableSnapshot> tableSnapshots) throws AnalysisException {
+        for (Map.Entry<BaseTableId, IVMTableSnapshot> entry : tableSnapshots.entrySet()) {
+            TableIf table = MTMVUtil.getTable(entry.getKey().getTableInfo());
+            if (entry.getValue().asMvccSnapshot().isPresent()) {
+                statementContext.setSnapshot(new MvccTableInfo(table),
+                        entry.getValue().asMvccSnapshot().get());
+                continue;
+            }
+            if (table instanceof MvccTable) {
+                throw new AnalysisException("Missing MVCC snapshot binding for base table: " + entry.getKey());
+            }
+        }
     }
 
     /**

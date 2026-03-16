@@ -69,6 +69,7 @@ public class IVMAggDeltaPlanner extends AbstractIVMDeltaPlanner {
             MTMV mtmv,
             IVMRefreshContext context,
             BaseDeltaSnapshot baseDeltaSnapshot) throws AnalysisException {
+        validateAppendOnlyStream(baseDeltaSnapshot);
         // Step 1: build the delta read plan (driving scan replaced with stream TVF,
         //         other tables bound to snapshots)
         Plan baseDeltaPlan = buildBaseDeltaPlan(
@@ -161,10 +162,7 @@ public class IVMAggDeltaPlanner extends AbstractIVMDeltaPlanner {
             LogicalAggregate<? extends Plan> rootAgg,
             BaseDeltaSnapshot baseDeltaSnapshot,
             MTMV mtmv) throws AnalysisException {
-        // Check if the stream supports deletes
-        StreamSubscription subscription = openSubscription(
-                mtmv, baseDeltaSnapshot.getDrivingTable());
-        StreamCapability capability = subscription.getStream().getCapability();
+        StreamCapability capability = baseDeltaSnapshot.getDrivingCapability();
         if (!capability.isSupportsDelete()) {
             // Append-only stream: min/max is safe since values are never removed
             return false;
@@ -223,15 +221,6 @@ public class IVMAggDeltaPlanner extends AbstractIVMDeltaPlanner {
 
         // For aggregates, use MERGE to upsert group-level results
         writePlans.add(commandBuilder.buildMergePlan(mtmv, groupDeltaPlan));
-
-        // If the stream supports deletes, generate a DELETE plan for
-        // groups that may become empty after retraction
-        StreamSubscription subscription = openSubscription(
-                mtmv, baseDeltaSnapshot.getDrivingTable());
-        StreamCapability capability = subscription.getStream().getCapability();
-        if (capability.isSupportsDelete()) {
-            writePlans.add(commandBuilder.buildDeletePlan(mtmv, groupDeltaPlan));
-        }
 
         return writePlans;
     }

@@ -51,6 +51,7 @@ public class IVMScanDeltaPlanner extends AbstractIVMDeltaPlanner {
             MTMV mtmv,
             IVMRefreshContext context,
             BaseDeltaSnapshot baseDeltaSnapshot) throws AnalysisException {
+        validateAppendOnlyStream(baseDeltaSnapshot);
         // Step 1: build the delta read plan (scan replaced with stream TVF)
         Plan baseDeltaPlan = buildBaseDeltaPlan(
                 context.getRewrittenMvPlan(), baseDeltaSnapshot);
@@ -90,24 +91,7 @@ public class IVMScanDeltaPlanner extends AbstractIVMDeltaPlanner {
         // Always generate an INSERT plan for new/changed rows
         writePlans.add(commandBuilder.buildInsertPlan(mtmv, normalizedDeltaPlan));
 
-        // If the stream supports deletes, generate a DELETE plan
-        StreamSubscription subscription = getSubscriptionForTable(
-                mtmv, baseDeltaSnapshot.getDrivingTable());
-        StreamCapability capability = subscription.getStream().getCapability();
-        if (capability.isSupportsDelete()) {
-            writePlans.add(commandBuilder.buildDeletePlan(mtmv, normalizedDeltaPlan));
-        }
-
         return writePlans;
-    }
-
-    /**
-     * Retrieves the subscription for the driving table.
-     * This re-opens the subscription, which should be idempotent.
-     */
-    private StreamSubscription getSubscriptionForTable(MTMV mtmv, BaseTableId tableId)
-            throws AnalysisException {
-        return openSubscription(mtmv, tableId);
     }
 
     @Override

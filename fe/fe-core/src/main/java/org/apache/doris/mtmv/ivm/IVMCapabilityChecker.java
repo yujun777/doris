@@ -71,6 +71,11 @@ public class IVMCapabilityChecker {
 
         // Check 4: all base tables must have stream bindings
         Map<BaseTableId, IVMStreamRef> baseTableStreams = ivmInfo.getBaseTableStreams();
+        if (baseTableStreams == null) {
+            return IVMCapabilityResult.unsupported(
+                    FallbackReason.STREAM_UNSUPPORTED,
+                    "No stream bindings are registered for this materialized view");
+        }
         for (BaseTableId tableId : context.getBaseTableOrder()) {
             if (!baseTableStreams.containsKey(tableId)) {
                 return IVMCapabilityResult.unsupported(
