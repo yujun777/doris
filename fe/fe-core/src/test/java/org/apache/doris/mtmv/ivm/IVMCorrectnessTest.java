@@ -195,6 +195,35 @@ public class IVMCorrectnessTest {
     }
 
     @Test
+    public void testCreateSqlCustomRewriterDelegates(@Mocked Plan originalPlan, @Mocked Plan rewrittenPlan) throws Exception {
+        IVMCreateSqlCustomRewriter customRewriter = new IVMCreateSqlCustomRewriter(new IVMCreateSqlRewriter() {
+            @Override
+            public Plan rewriteForCreate(Plan plan) throws AnalysisException {
+                Assertions.assertSame(originalPlan, plan);
+                return rewrittenPlan;
+            }
+        });
+
+        Assertions.assertSame(rewrittenPlan, customRewriter.rewriteRoot(originalPlan, null));
+    }
+
+    @Test
+    public void testCreateSqlCustomRewriterWrapsAnalysisException(@Mocked Plan originalPlan) throws Exception {
+        IVMCreateSqlCustomRewriter customRewriter = new IVMCreateSqlCustomRewriter(new IVMCreateSqlRewriter() {
+            @Override
+            public Plan rewriteForCreate(Plan plan) throws AnalysisException {
+                throw new AnalysisException("rewrite failed");
+            }
+        });
+
+        org.apache.doris.nereids.exceptions.AnalysisException exception = Assertions.assertThrows(
+                org.apache.doris.nereids.exceptions.AnalysisException.class,
+                () -> customRewriter.rewriteRoot(originalPlan, null));
+        Assertions.assertTrue(exception.getMessage().contains("rewrite failed"));
+        Assertions.assertInstanceOf(AnalysisException.class, exception.getCause());
+    }
+
+    @Test
     public void testRefreshContextDoesNotClearExistingSnapshotWhenNoTargetSnapshot(@Mocked MTMV mtmv) throws Exception {
         MTMVRefreshSnapshot currentSnapshot = new MTMVRefreshSnapshot();
         MTMVRefreshContext baseContext = new MTMVRefreshContext(mtmv);
