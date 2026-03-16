@@ -18,7 +18,6 @@
 package org.apache.doris.mtmv.ivm;
 
 import org.apache.doris.common.AnalysisException;
-import org.apache.doris.mtmv.BaseTableInfo;
 import org.apache.doris.mtmv.MTMVPartitionUtil;
 import org.apache.doris.mtmv.MTMVRefreshContext;
 import org.apache.doris.mtmv.MTMVRefreshPartitionSnapshot;
@@ -30,8 +29,8 @@ import org.apache.doris.nereids.trees.plans.Plan;
 import com.google.common.collect.Maps;
 import org.apache.commons.collections4.MapUtils;
 
-import java.util.Map;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 
 /**

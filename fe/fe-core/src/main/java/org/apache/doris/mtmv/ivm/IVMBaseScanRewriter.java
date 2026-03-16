@@ -173,7 +173,8 @@ public class IVMBaseScanRewriter {
             return super.visit(plan, context);
         }
 
-        private Plan bindSnapshot(LogicalCatalogRelation relation, IVMTableSnapshot tableSnapshot, BaseTableId tableId) {
+        private Plan bindSnapshot(
+                LogicalCatalogRelation relation, IVMTableSnapshot tableSnapshot, BaseTableId tableId) {
             if (relation instanceof SupportTableSnapshot) {
                 if (!tableSnapshot.asTableSnapshot().isPresent()) {
                     throw new SnapshotBindingException(new AnalysisException(
@@ -183,8 +184,8 @@ public class IVMBaseScanRewriter {
             }
             if (!tableSnapshot.asMvccSnapshot().isPresent()) {
                 throw new SnapshotBindingException(new AnalysisException(
-                        "Plan node does not support snapshot binding for base table: " + tableId
-                                + ", relation=" + relation.getClass().getSimpleName()));
+                        "Plan node does not support snapshot binding for base table: "
+                                + tableId + ", relation=" + relation.getClass().getSimpleName()));
             }
             return relation;
         }
