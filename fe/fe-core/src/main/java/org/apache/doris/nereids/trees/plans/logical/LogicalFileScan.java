@@ -54,7 +54,7 @@ import java.util.Optional;
  * Logical file scan for external catalog.
  */
 public class LogicalFileScan extends LogicalCatalogRelation
-        implements SupportPruneNestedColumn, SupportTableSnapshot {
+        implements SupportPruneNestedColumn {
     protected final SelectedPartitions selectedPartitions;
     protected final Optional<TableSample> tableSample;
     protected final Optional<TableSnapshot> tableSnapshot;
@@ -118,16 +118,6 @@ public class LogicalFileScan extends LogicalCatalogRelation
 
     public Optional<TableScanParams> getScanParams() {
         return scanParams;
-    }
-
-    @Override
-    public LogicalFileScan withTableSnapshot(TableSnapshot newTableSnapshot) {
-        SelectedPartitions snapshotSelectedPartitions = loadSelectedPartitions(
-                (ExternalTable) table, Optional.of(newTableSnapshot), scanParams);
-        return new LogicalFileScan(relationId, (ExternalTable) table, qualifier,
-                mergeSelectedPartitions(snapshotSelectedPartitions), operativeSlots, virtualColumns, tableSample,
-                Optional.of(newTableSnapshot), scanParams, Optional.empty(), Optional.of(getLogicalProperties()),
-                tableAlias, cachedOutputs);
     }
 
     @Override

@@ -31,7 +31,6 @@ import org.apache.doris.mtmv.MTMVRefreshSnapshot;
 import org.apache.doris.mtmv.MTMVUtil;
 import org.apache.doris.nereids.trees.expressions.StatementScopeIdGenerator;
 import org.apache.doris.nereids.trees.plans.Plan;
-import org.apache.doris.nereids.trees.plans.logical.LogicalFileScan;
 import org.apache.doris.nereids.trees.plans.logical.LogicalOlapScan;
 
 import com.google.common.collect.ImmutableList;
@@ -236,114 +235,6 @@ public class IVMCorrectnessTest {
                 new StreamCapability(false, false, false, true, true, true));
 
         planner.assertAppendOnly(snapshot);
-    }
-
-    @Test
-    public void testBindBaseTableSnapshotsWritesTableSnapshotToLogicalFileScan(
-            @Mocked ExternalTable externalTable,
-            @Mocked DatabaseIf database,
-            @Mocked CatalogIf catalog,
-            @Mocked BaseTableInfo tableInfo) throws Exception {
-        LogicalFileScan.SelectedPartitions selectedPartitions =
-                new LogicalFileScan.SelectedPartitions(1, ImmutableMap.of(), false);
-        new Expectations() {
-            {
-                externalTable.initSelectedPartitions((Optional) any);
-                result = selectedPartitions;
-                minTimes = 1;
-
-                externalTable.getName();
-                result = "tbl";
-                minTimes = 0;
-                externalTable.getDatabase();
-                result = database;
-                minTimes = 0;
-                database.getCatalog();
-                result = catalog;
-                minTimes = 0;
-                catalog.getName();
-                result = "ctl";
-                minTimes = 0;
-                database.getFullName();
-                result = "db";
-                minTimes = 0;
-
-                tableInfo.getCtlName();
-                result = "ctl";
-                minTimes = 0;
-                tableInfo.getDbName();
-                result = "db";
-                minTimes = 0;
-                tableInfo.getTableName();
-                result = "tbl";
-                minTimes = 0;
-            }
-        };
-
-        LogicalFileScan scan = new LogicalFileScan(StatementScopeIdGenerator.newRelationId(), externalTable,
-                ImmutableList.of("ctl", "db"), ImmutableList.of(), Optional.empty(), Optional.empty(),
-                Optional.empty(), Optional.empty());
-        TableSnapshot tableSnapshot = TableSnapshot.versionOf("101");
-
-        LogicalFileScan rewritten = (LogicalFileScan) new IVMBaseScanRewriter().bindBaseTableSnapshots(scan,
-                ImmutableMap.of(new BaseTableId(tableInfo), new IVMVersionedTableSnapshot(
-                        Optional.of(tableSnapshot), Optional.empty(), Optional.empty())));
-        Assertions.assertTrue(rewritten.getTableSnapshot().isPresent());
-        Assertions.assertEquals("101", rewritten.getTableSnapshot().get().getValue());
-    }
-
-    @Test
-    public void testBindBaseTableSnapshotsMatchesSinglePartQualifier(
-            @Mocked ExternalTable externalTable,
-            @Mocked DatabaseIf database,
-            @Mocked CatalogIf catalog,
-            @Mocked BaseTableInfo tableInfo) throws Exception {
-        LogicalFileScan.SelectedPartitions selectedPartitions =
-                new LogicalFileScan.SelectedPartitions(1, ImmutableMap.of(), false);
-        new Expectations() {
-            {
-                externalTable.initSelectedPartitions((Optional) any);
-                result = selectedPartitions;
-                minTimes = 1;
-
-                externalTable.getName();
-                result = "tbl";
-                minTimes = 0;
-                externalTable.getDatabase();
-                result = database;
-                minTimes = 0;
-                database.getCatalog();
-                result = catalog;
-                minTimes = 0;
-                catalog.getName();
-                result = "ctl";
-                minTimes = 0;
-                database.getFullName();
-                result = "db";
-                minTimes = 0;
-
-                tableInfo.getCtlName();
-                result = "ctl";
-                minTimes = 0;
-                tableInfo.getDbName();
-                result = "db";
-                minTimes = 0;
-                tableInfo.getTableName();
-                result = "tbl";
-                minTimes = 0;
-            }
-        };
-
-        LogicalFileScan scan = new LogicalFileScan(StatementScopeIdGenerator.newRelationId(), externalTable,
-                ImmutableList.of("db"), ImmutableList.of(), Optional.empty(), Optional.empty(),
-                Optional.empty(), Optional.empty());
-        TableSnapshot tableSnapshot = TableSnapshot.versionOf("102");
-
-        LogicalFileScan rewritten = (LogicalFileScan) new IVMBaseScanRewriter().bindBaseTableSnapshots(scan,
-                ImmutableMap.of(new BaseTableId(tableInfo), new IVMVersionedTableSnapshot(
-                        Optional.of(tableSnapshot), Optional.empty(), Optional.empty())));
-        Assertions.assertTrue(rewritten.getTableSnapshot().isPresent());
-        Assertions.assertEquals("102", rewritten.getTableSnapshot().get().getValue());
     }
 
     @Test
