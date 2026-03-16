@@ -34,6 +34,11 @@ import org.apache.doris.nereids.trees.plans.logical.LogicalSort;
 import org.apache.doris.nereids.trees.plans.logical.LogicalUnion;
 import org.apache.doris.nereids.trees.plans.logical.LogicalWindow;
 
+import java.util.HashSet;
+import java.util.List;
+import java.util.Optional;
+import java.util.Set;
+
 /**
  * Analyzes a materialized view's rewritten plan tree and classifies it
  * into one of the supported {@link IVMPlanPattern} values.
@@ -68,6 +73,12 @@ public class IVMPlanAnalyzer {
             }
             hadProject = true;
             current = project.child(0);
+        }
+
+        Optional<String> duplicatedBaseTable = findDuplicatedBaseTable(current, new HashSet<>());
+        if (duplicatedBaseTable.isPresent()) {
+            return unsupported("Repeated base table is not supported for IVM: "
+                    + duplicatedBaseTable.get());
         }
 
         // Step 2: dispatch on core node type
@@ -272,5 +283,33 @@ public class IVMPlanAnalyzer {
 
     private IVMPlanAnalysis unsupported(String reason) {
         return new IVMPlanAnalysis(IVMPlanPattern.UNSUPPORTED, reason);
+    }
+
+    private Optional<String> findDuplicatedBaseTable(Plan plan, Set<String> visitedTables) {
+        if (plan instanceof LogicalCatalogRelation) {
+            LogicalCatalogRelation relation = (LogicalCatalogRelation) plan;
+            String tableKey = buildTableKey(relation);
+            if (!visitedTables.add(tableKey)) {
+                return Optional.of(tableKey);
+            }
+            return Optional.empty();
+        }
+        for (Plan child : plan.children()) {
+            Optional<String> duplicated = findDuplicatedBaseTable(child, visitedTables);
+            if (duplicated.isPresent()) {
+                return duplicated;
+            }
+        }
+        return Optional.empty();
+    }
+
+    private String buildTableKey(LogicalCatalogRelation relation) {
+        List<String> qualifier = relation.getQualifier();
+        StringBuilder builder = new StringBuilder();
+        if (!qualifier.isEmpty()) {
+            builder.append(String.join(".", qualifier)).append(".");
+        }
+        builder.append(relation.getTable().getName());
+        return builder.toString();
     }
 }
