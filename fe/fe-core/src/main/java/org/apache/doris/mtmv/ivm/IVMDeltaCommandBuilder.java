@@ -21,14 +21,22 @@ import org.apache.doris.catalog.MTMV;
 import org.apache.doris.common.AnalysisException;
 import org.apache.doris.datasource.InternalCatalog;
 import org.apache.doris.nereids.analyzer.UnboundTableSinkCreator;
+import org.apache.doris.nereids.trees.expressions.EqualTo;
+import org.apache.doris.nereids.trees.expressions.SlotReference;
 import org.apache.doris.nereids.trees.plans.Plan;
+import org.apache.doris.nereids.trees.plans.commands.Command;
+import org.apache.doris.nereids.trees.plans.commands.DeleteFromCommand;
 import org.apache.doris.nereids.trees.plans.commands.info.DMLCommandType;
 import org.apache.doris.nereids.trees.plans.commands.insert.InsertIntoTableCommand;
+import org.apache.doris.nereids.trees.plans.commands.merge.MergeIntoCommand;
+import org.apache.doris.nereids.trees.plans.commands.merge.MergeMatchedClause;
+import org.apache.doris.nereids.trees.plans.commands.merge.MergeNotMatchedClause;
 import org.apache.doris.nereids.trees.plans.logical.LogicalPlan;
 import org.apache.doris.thrift.TPartialUpdateNewRowPolicy;
 
 import com.google.common.collect.ImmutableList;
 
+import java.util.Collections;
 import java.util.List;
 import java.util.Optional;
 
@@ -54,7 +62,7 @@ public class IVMDeltaCommandBuilder {
      * @param sourcePlan the plan producing rows to insert
      * @return an executable INSERT command plan
      */
-    public Plan buildInsertPlan(MTMV mtmv, Plan sourcePlan) throws AnalysisException {
+    public Command buildInsertPlan(MTMV mtmv, Plan sourcePlan) throws AnalysisException {
         List<String> nameParts = getMvNameParts(mtmv);
         LogicalPlan sinkPlan = (LogicalPlan) UnboundTableSinkCreator.createUnboundTableSink(
                 nameParts,
@@ -74,28 +82,18 @@ public class IVMDeltaCommandBuilder {
      * Builds a DELETE command plan that removes rows from the materialized
      * view based on the source plan's results.
      *
-     * <p>For unique key MV tables with merge-on-write, DELETE is internally
-     * handled as a special INSERT with {@link DMLCommandType#DELETE} that
-     * marks rows for deletion.
-     *
      * @param mtmv the target materialized view
      * @param sourcePlan the plan producing rows to delete
      * @return an executable DELETE command plan
      */
-    public Plan buildDeletePlan(MTMV mtmv, Plan sourcePlan) throws AnalysisException {
+    public Command buildDeletePlan(MTMV mtmv, Plan sourcePlan) throws AnalysisException {
         List<String> nameParts = getMvNameParts(mtmv);
-        LogicalPlan sinkPlan = (LogicalPlan) UnboundTableSinkCreator.createUnboundTableSink(
+        return new DeleteFromCommand(
                 nameParts,
-                ImmutableList.of(),
-                ImmutableList.of(),
+                null,
                 false,
-                ImmutableList.of(),
-                false,
-                TPartialUpdateNewRowPolicy.APPEND,
-                DMLCommandType.DELETE,
+                Collections.emptyList(),
                 (LogicalPlan) sourcePlan);
-        return new InsertIntoTableCommand(sinkPlan,
-                Optional.empty(), Optional.empty(), Optional.empty());
     }
 
     /**
@@ -103,32 +101,32 @@ public class IVMDeltaCommandBuilder {
      * view. Used for aggregate patterns where matched groups get their
      * values updated and unmatched groups get inserted.
      *
-     * <p>For unique key MV tables, this is implemented as a partial update
-     * INSERT that naturally performs upsert semantics keyed by the primary
-     * key ({@code __ivm_row_id__}).
-     *
      * @param mtmv the target materialized view
      * @param sourcePlan the plan producing rows to merge
      * @return an executable MERGE command plan
      */
-    public Plan buildMergePlan(MTMV mtmv, Plan sourcePlan) throws AnalysisException {
-        // For unique key tables with merge-on-write, INSERT with the same
-        // primary key (__ivm_row_id__) naturally performs upsert.
-        // This is equivalent to MERGE: matched rows are updated,
-        // unmatched rows are inserted.
+    public Command buildMergePlan(MTMV mtmv, Plan sourcePlan) throws AnalysisException {
         List<String> nameParts = getMvNameParts(mtmv);
-        LogicalPlan sinkPlan = (LogicalPlan) UnboundTableSinkCreator.createUnboundTableSink(
+
+        String rowIdColumn = IVMCreateSqlRewriter.IVM_ROW_ID_COLUMN;
+        SlotReference targetRowId = new SlotReference(rowIdColumn, org.apache.doris.nereids.types.StringType.INSTANCE);
+        SlotReference sourceRowId = new SlotReference(rowIdColumn, org.apache.doris.nereids.types.StringType.INSTANCE);
+        EqualTo onClause = new EqualTo(sourceRowId, targetRowId);
+
+        List<MergeMatchedClause> matchedClauses = Collections.singletonList(
+                new MergeMatchedClause(Optional.empty(), Collections.emptyList(), false));
+
+        List<MergeNotMatchedClause> notMatchedClauses = Collections.singletonList(
+                new MergeNotMatchedClause(Optional.empty(), Collections.emptyList(), Collections.emptyList()));
+
+        return new MergeIntoCommand(
                 nameParts,
-                ImmutableList.of(),
-                ImmutableList.of(),
-                false,
-                ImmutableList.of(),
-                true,
-                TPartialUpdateNewRowPolicy.APPEND,
-                DMLCommandType.INSERT,
-                (LogicalPlan) sourcePlan);
-        return new InsertIntoTableCommand(sinkPlan,
-                Optional.empty(), Optional.empty(), Optional.empty());
+                Optional.empty(),
+                Optional.empty(),
+                (LogicalPlan) sourcePlan,
+                onClause,
+                matchedClauses,
+                notMatchedClauses);
     }
 
     /**
