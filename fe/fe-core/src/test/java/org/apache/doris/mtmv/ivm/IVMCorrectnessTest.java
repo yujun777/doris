@@ -165,6 +165,36 @@ public class IVMCorrectnessTest {
     }
 
     @Test
+    public void testCapabilityAllowsSingleOlapBaseTable(
+            @Mocked MTMV mtmv,
+            @Mocked OlapTable olapTable,
+            @Mocked BaseTableInfo tableInfo) {
+        BaseTableId tableId = new BaseTableId(tableInfo);
+        IVMInfo ivmInfo = new IVMInfo();
+        ivmInfo.setBaseTableStreams(ImmutableMap.of(
+                tableId, new IVMStreamRef(StreamType.OLAP, "consumer-1", ImmutableMap.of())));
+
+        new Expectations() {
+            {
+                mtmv.getIvmInfo();
+                result = ivmInfo;
+            }
+        };
+        new MockUp<MTMVUtil>() {
+            @Mock
+            public TableIf getTable(BaseTableInfo input) {
+                return olapTable;
+            }
+        };
+
+        IVMRefreshContext context = new IVMRefreshContext(null, null, ImmutableList.of(tableId));
+        context.setPlanAnalysis(new IVMPlanAnalysis(IVMPlanPattern.SCAN_ONLY, null));
+
+        IVMCapabilityResult result = new IVMCapabilityChecker().check(mtmv, context);
+        Assertions.assertTrue(result.isIncremental());
+    }
+
+    @Test
     public void testRefreshContextDoesNotClearExistingSnapshotWhenNoTargetSnapshot(@Mocked MTMV mtmv) throws Exception {
         MTMVRefreshSnapshot currentSnapshot = new MTMVRefreshSnapshot();
         MTMVRefreshContext baseContext = new MTMVRefreshContext(mtmv);

@@ -21,15 +21,9 @@ import org.apache.doris.catalog.MTMV;
 import org.apache.doris.catalog.OlapTable;
 import org.apache.doris.catalog.TableIf;
 import org.apache.doris.common.AnalysisException;
-import org.apache.doris.datasource.mvcc.MvccTable;
 import org.apache.doris.mtmv.MTMVUtil;
-import org.apache.doris.nereids.trees.plans.logical.LogicalCatalogRelation;
-import org.apache.doris.nereids.trees.plans.logical.LogicalPlan;
-import org.apache.doris.nereids.trees.plans.logical.SupportTableSnapshot;
-import org.apache.doris.nereids.util.PlanUtils;
 
 import java.util.Map;
-import java.util.Set;
 
 /**
  * Checks whether incremental refresh is viable for a materialized view.
@@ -113,57 +107,13 @@ public class IVMCapabilityChecker {
             }
         }
 
-        // Check 5: multi-base refresh requires every base scan to support snapshot rebinding or MVCC snapshots
+        // Check 5: current OLAP-only implementation only supports single-base IVM
         if (context.getBaseTableOrder().size() > 1) {
-            IVMCapabilityResult snapshotBindingCapability = checkSnapshotBindingCapability(context);
-            if (!snapshotBindingCapability.isIncremental()) {
-                return snapshotBindingCapability;
-            }
+            return IVMCapabilityResult.unsupported(
+                    FallbackReason.SNAPSHOT_ALIGNMENT_UNSUPPORTED,
+                    "Current incremental refresh only supports a single OLAP base table");
         }
 
         return IVMCapabilityResult.ok();
-    }
-
-    private IVMCapabilityResult checkSnapshotBindingCapability(IVMRefreshContext context) {
-        if (!(context.getRewrittenMvPlan() instanceof LogicalPlan)) {
-            return IVMCapabilityResult.unsupported(
-                    FallbackReason.SNAPSHOT_ALIGNMENT_UNSUPPORTED,
-                    "Rewritten MV plan is not a logical plan");
-        }
-        Set<LogicalCatalogRelation> scans = PlanUtils.getLogicalScanFromRootPlan(
-                (LogicalPlan) context.getRewrittenMvPlan());
-        for (BaseTableId tableId : context.getBaseTableOrder()) {
-            LogicalCatalogRelation relation = findRelation(scans, tableId);
-            if (relation == null) {
-                return IVMCapabilityResult.unsupported(
-                        FallbackReason.SNAPSHOT_ALIGNMENT_UNSUPPORTED,
-                        "Unable to find scan node for base table: " + tableId);
-            }
-            if (relation instanceof SupportTableSnapshot || relation.getTable() instanceof MvccTable) {
-                continue;
-            }
-            return IVMCapabilityResult.unsupported(
-                    FallbackReason.SNAPSHOT_ALIGNMENT_UNSUPPORTED,
-                    "Base table scan does not support snapshot rebinding: " + tableId
-                            + ", relation=" + relation.getClass().getSimpleName());
-        }
-        return IVMCapabilityResult.ok();
-    }
-
-    private LogicalCatalogRelation findRelation(Set<LogicalCatalogRelation> scans, BaseTableId tableId) {
-        for (LogicalCatalogRelation relation : scans) {
-            if (matchesTable(relation, tableId)) {
-                return relation;
-            }
-        }
-        return null;
-    }
-
-    private boolean matchesTable(LogicalCatalogRelation relation, BaseTableId targetTableId) {
-        String ctlName = relation.getQualifier().size() >= 1 ? relation.getQualifier().get(0) : "";
-        String dbName = relation.getQualifier().size() >= 2 ? relation.getQualifier().get(1) : "";
-        return relation.getTable().getName().equalsIgnoreCase(targetTableId.getTableInfo().getTableName())
-                && dbName.equalsIgnoreCase(targetTableId.getTableInfo().getDbName())
-                && ctlName.equalsIgnoreCase(targetTableId.getTableInfo().getCtlName());
     }
 }
