@@ -61,8 +61,8 @@ import java.util.stream.Collectors;
  *
  * <p>RowId propagation rules:
  * <ul>
- *   <li>OlapScan (unique/primary key): {@code murmur_hash3_64(pk_cols)}</li>
- *   <li>OlapScan (detail/dup key): {@code uuid()} (non-deterministic)</li>
+ *   <li>OlapScan (unique key MOW): {@code murmur_hash3_64(key_cols)}</li>
+ *   <li>OlapScan (dup key): {@code uuid()} (non-deterministic)</li>
  *   <li>Filter/Project: transparent pass-through from child</li>
  *   <li>Join: {@code murmur_hash3_64(cast(left.__ivm_row_id__ as varchar),
  *       cast(right.__ivm_row_id__ as varchar))}</li>
@@ -99,7 +99,8 @@ public class IVMCreateSqlRewriter {
             return rewriteScan((LogicalOlapScan) plan);
         }
         if (plan instanceof LogicalCatalogRelation) {
-            return rewriteExternalScan((LogicalCatalogRelation) plan);
+            throw new AnalysisException("External base table does not support IVM rewrite: "
+                    + plan.getClass().getSimpleName());
         }
         if (plan instanceof LogicalFilter) {
             return rewriteFilter((LogicalFilter<?>) plan);
@@ -122,18 +123,23 @@ public class IVMCreateSqlRewriter {
     /**
      * Rewrites an OlapScan: adds a project on top with the rowId column.
      *
-     * <p>For unique/primary key tables, rowId = murmur_hash3_64(pk columns).
-     * For detail (dup key) tables, rowId = uuid() (non-deterministic).
+     * <p>For merge-on-write unique key tables, rowId = murmur_hash3_64(key columns).
+     * For duplicate key tables, rowId = uuid() (non-deterministic).
+     * Other key types are rejected because they do not provide binlog/stream support for IVM.
      */
-    private RewriteResult rewriteScan(LogicalOlapScan scan) {
+    private RewriteResult rewriteScan(LogicalOlapScan scan) throws AnalysisException {
         OlapTable olapTable = scan.getTable();
         KeysType keysType = olapTable.getKeysType();
 
         Expression rowIdExpr;
         boolean isDeterministic;
 
-        if (keysType == KeysType.UNIQUE_KEYS || keysType == KeysType.PRIMARY_KEYS) {
-            // hash(primary key columns)
+        if (keysType == KeysType.UNIQUE_KEYS) {
+            if (!olapTable.getEnableUniqueKeyMergeOnWrite()) {
+                throw new AnalysisException("Merge-on-read unique key table does not support binlog and stream"
+                        + " for IVM rewrite: " + olapTable.getName());
+            }
+            // hash(key columns)
             List<Column> keyColumns = olapTable.getBaseSchemaKeyColumns();
             List<Slot> scanOutput = scan.getOutput();
             List<Expression> keySlots = new ArrayList<>();
@@ -145,10 +151,13 @@ public class IVMCreateSqlRewriter {
             }
             rowIdExpr = buildHashExpr(keySlots);
             isDeterministic = true;
-        } else {
+        } else if (keysType == KeysType.DUP_KEYS) {
             // detail table: non-deterministic uuid-based rowId
             rowIdExpr = new Uuid();
             isDeterministic = false;
+        } else {
+            throw new AnalysisException("Table key type does not support binlog and stream for IVM rewrite: "
+                    + keysType + ", table=" + olapTable.getName());
         }
 
         Alias rowIdAlias = new Alias(rowIdExpr, IVM_ROW_ID_COLUMN);
@@ -156,19 +165,6 @@ public class IVMCreateSqlRewriter {
         projects.add(rowIdAlias);
         LogicalProject<Plan> project = new LogicalProject<>(projects, scan);
         return new RewriteResult(project, rowIdAlias.toSlot(), isDeterministic);
-    }
-
-    /**
-     * Rewrites an external table scan (Paimon/Iceberg etc.): same as detail table,
-     * uses uuid() for now since we don't know the key structure.
-     */
-    private RewriteResult rewriteExternalScan(LogicalCatalogRelation scan) {
-        Expression rowIdExpr = new Uuid();
-        Alias rowIdAlias = new Alias(rowIdExpr, IVM_ROW_ID_COLUMN);
-        List<NamedExpression> projects = new ArrayList<>(scan.getOutput());
-        projects.add(rowIdAlias);
-        LogicalProject<Plan> project = new LogicalProject<>(projects, scan);
-        return new RewriteResult(project, rowIdAlias.toSlot(), false);
     }
 
     /**
