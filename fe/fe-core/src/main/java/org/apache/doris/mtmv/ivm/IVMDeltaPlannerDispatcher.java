@@ -39,21 +39,12 @@ import java.util.List;
  */
 public class IVMDeltaPlannerDispatcher {
 
-    private final IVMDeltaPlanner scanPlanner;
-    private final IVMDeltaPlanner joinPlanner;
-    private final IVMAggDeltaPlanner aggPlanner;
-    private final IVMDeltaPlanner unionPlanner;
-
-    public IVMDeltaPlannerDispatcher(
-            IVMDeltaPlanner scanPlanner,
-            IVMDeltaPlanner joinPlanner,
-            IVMAggDeltaPlanner aggPlanner,
-            IVMDeltaPlanner unionPlanner) {
-        this.scanPlanner = scanPlanner;
-        this.joinPlanner = joinPlanner;
-        this.aggPlanner = aggPlanner;
-        this.unionPlanner = unionPlanner;
-    }
+    private final IVMBaseScanRewriter scanRewriter = new IVMBaseScanRewriter();
+    private final IVMDeltaCommandBuilder commandBuilder = new IVMDeltaCommandBuilder();
+    private final IVMDeltaPlanner scanPlanner = new IVMScanDeltaPlanner(scanRewriter, commandBuilder);
+    private final IVMDeltaPlanner joinPlanner = new IVMJoinDeltaPlanner(scanRewriter, commandBuilder);
+    private final IVMDeltaPlanner aggPlanner = new IVMAggDeltaPlanner(scanRewriter, commandBuilder);
+    private final IVMDeltaPlanner unionPlanner = new IVMUnionDeltaPlanner(scanRewriter, commandBuilder);
 
     /**
      * Plans the delta refresh for the given materialized view by dispatching
