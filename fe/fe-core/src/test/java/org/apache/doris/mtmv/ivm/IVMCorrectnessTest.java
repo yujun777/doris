@@ -78,7 +78,7 @@ public class IVMCorrectnessTest {
     }
 
     @Test
-    public void testCapabilityRejectsMultiBaseLogicalOlapScanSnapshotBinding(
+    public void testCapabilityAllowsMultiBaseLogicalOlapScan(
             @Mocked MTMV mtmv,
             @Mocked OlapTable firstTable,
             @Mocked BaseTableInfo firstTableInfo,
@@ -130,8 +130,7 @@ public class IVMCorrectnessTest {
         context.setPlanAnalysis(new IVMPlanAnalysis(IVMPlanPattern.INNER_JOIN, null));
 
         IVMCapabilityResult result = new IVMCapabilityChecker().check(mtmv, context);
-        Assertions.assertFalse(result.isIncremental());
-        Assertions.assertEquals(FallbackReason.SNAPSHOT_ALIGNMENT_UNSUPPORTED, result.getFallbackReason());
+        Assertions.assertTrue(result.isIncremental());
     }
 
     @Test

@@ -107,13 +107,6 @@ public class IVMCapabilityChecker {
             }
         }
 
-        // Check 5: current OLAP-only implementation only supports single-base IVM
-        if (context.getBaseTableOrder().size() > 1) {
-            return IVMCapabilityResult.unsupported(
-                    FallbackReason.SNAPSHOT_ALIGNMENT_UNSUPPORTED,
-                    "Current incremental refresh only supports a single OLAP base table");
-        }
-
         return IVMCapabilityResult.ok();
     }
 }
