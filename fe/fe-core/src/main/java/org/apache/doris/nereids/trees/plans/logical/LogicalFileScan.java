@@ -23,8 +23,6 @@ import org.apache.doris.catalog.PartitionItem;
 import org.apache.doris.datasource.ExternalTable;
 import org.apache.doris.datasource.hive.HMSExternalTable;
 import org.apache.doris.datasource.iceberg.IcebergExternalTable;
-import org.apache.doris.datasource.mvcc.MvccSnapshot;
-import org.apache.doris.datasource.mvcc.MvccTable;
 import org.apache.doris.datasource.mvcc.MvccUtil;
 import org.apache.doris.nereids.memo.GroupExpression;
 import org.apache.doris.nereids.properties.LogicalProperties;
@@ -53,8 +51,7 @@ import java.util.Optional;
 /**
  * Logical file scan for external catalog.
  */
-public class LogicalFileScan extends LogicalCatalogRelation
-        implements SupportPruneNestedColumn {
+public class LogicalFileScan extends LogicalCatalogRelation implements SupportPruneNestedColumn {
     protected final SelectedPartitions selectedPartitions;
     protected final Optional<TableSample> tableSample;
     protected final Optional<TableSnapshot> tableSnapshot;
@@ -296,27 +293,5 @@ public class LogicalFileScan extends LogicalCatalogRelation
     @Override
     public List<Slot> getOperativeSlots() {
         return operativeSlots;
-    }
-
-    protected SelectedPartitions mergeSelectedPartitions(SelectedPartitions snapshotSelectedPartitions) {
-        if (!selectedPartitions.isPruned) {
-            return snapshotSelectedPartitions;
-        }
-        ImmutableMap.Builder<String, PartitionItem> partitions = ImmutableMap.builder();
-        for (Map.Entry<String, PartitionItem> entry : snapshotSelectedPartitions.selectedPartitions.entrySet()) {
-            if (selectedPartitions.selectedPartitions.containsKey(entry.getKey())) {
-                partitions.put(entry.getKey(), entry.getValue());
-            }
-        }
-        return new SelectedPartitions(snapshotSelectedPartitions.totalPartitionNum, partitions.build(), true);
-    }
-
-    protected static SelectedPartitions loadSelectedPartitions(ExternalTable table,
-            Optional<TableSnapshot> tableSnapshot, Optional<TableScanParams> scanParams) {
-        Optional<MvccSnapshot> mvccSnapshot = Optional.empty();
-        if (table instanceof MvccTable) {
-            mvccSnapshot = Optional.of(((MvccTable) table).loadSnapshot(tableSnapshot, scanParams));
-        }
-        return table.initSelectedPartitions(mvccSnapshot);
     }
 }
