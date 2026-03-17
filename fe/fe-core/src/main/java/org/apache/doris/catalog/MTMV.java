@@ -123,6 +123,7 @@ public class MTMV extends OlapTable {
         this.mvPartitionInfo = params.mvPartitionInfo;
         this.relation = params.relation;
         this.refreshSnapshot = new MTMVRefreshSnapshot();
+        this.ivmInfo = new IVMInfo();
         this.envInfo = new EnvInfo(-1L, -1L);
         this.sessionVariables = params.sessionVariables;
         mvRwLock = new ReentrantReadWriteLock(true);
@@ -536,21 +537,7 @@ public class MTMV extends OlapTable {
     }
 
     public IVMInfo getIvmInfo() {
-        readMvLock();
-        try {
-            return ivmInfo;
-        } finally {
-            readMvUnlock();
-        }
-    }
-
-    public void setIvmInfo(IVMInfo ivmInfo) {
-        writeMvLock();
-        try {
-            this.ivmInfo = ivmInfo;
-        } finally {
-            writeMvUnlock();
-        }
+        return ivmInfo;
     }
 
     public boolean canBeCandidate() {
