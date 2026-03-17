@@ -20,6 +20,8 @@ package org.apache.doris.mtmv.ivm;
 import org.apache.doris.catalog.MTMV;
 import org.apache.doris.common.AnalysisException;
 
+import com.google.common.annotations.VisibleForTesting;
+
 import java.util.List;
 
 /**
@@ -39,12 +41,56 @@ import java.util.List;
  */
 public class IVMDeltaPlannerDispatcher {
 
-    private final IVMBaseScanRewriter scanRewriter = new IVMBaseScanRewriter();
-    private final IVMDeltaCommandBuilder commandBuilder = new IVMDeltaCommandBuilder();
-    private final IVMDeltaPlanner scanPlanner = new IVMScanDeltaPlanner(scanRewriter, commandBuilder);
-    private final IVMDeltaPlanner joinPlanner = new IVMJoinDeltaPlanner(scanRewriter, commandBuilder);
-    private final IVMDeltaPlanner aggPlanner = new IVMAggDeltaPlanner(scanRewriter, commandBuilder);
-    private final IVMDeltaPlanner unionPlanner = new IVMUnionDeltaPlanner(scanRewriter, commandBuilder);
+    private final IVMDeltaPlanner scanPlanner;
+    private final IVMDeltaPlanner joinPlanner;
+    private final IVMAggDeltaPlanner aggPlanner;
+    private final IVMDeltaPlanner unionPlanner;
+
+    public IVMDeltaPlannerDispatcher() {
+        this(createDefaultPlanners());
+    }
+
+    @VisibleForTesting
+    IVMDeltaPlannerDispatcher(
+            IVMDeltaPlanner scanPlanner,
+            IVMDeltaPlanner joinPlanner,
+            IVMAggDeltaPlanner aggPlanner,
+            IVMDeltaPlanner unionPlanner) {
+        this.scanPlanner = scanPlanner;
+        this.joinPlanner = joinPlanner;
+        this.aggPlanner = aggPlanner;
+        this.unionPlanner = unionPlanner;
+    }
+
+    private IVMDeltaPlannerDispatcher(DefaultPlanners defaultPlanners) {
+        this(defaultPlanners.scanPlanner, defaultPlanners.joinPlanner,
+                defaultPlanners.aggPlanner, defaultPlanners.unionPlanner);
+    }
+
+    private static DefaultPlanners createDefaultPlanners() {
+        IVMBaseScanRewriter scanRewriter = new IVMBaseScanRewriter();
+        IVMDeltaCommandBuilder commandBuilder = new IVMDeltaCommandBuilder();
+        return new DefaultPlanners(
+                new IVMScanDeltaPlanner(scanRewriter, commandBuilder),
+                new IVMJoinDeltaPlanner(scanRewriter, commandBuilder),
+                new IVMAggDeltaPlanner(scanRewriter, commandBuilder),
+                new IVMUnionDeltaPlanner(scanRewriter, commandBuilder));
+    }
+
+    private static class DefaultPlanners {
+        private final IVMDeltaPlanner scanPlanner;
+        private final IVMDeltaPlanner joinPlanner;
+        private final IVMAggDeltaPlanner aggPlanner;
+        private final IVMDeltaPlanner unionPlanner;
+
+        private DefaultPlanners(IVMDeltaPlanner scanPlanner, IVMDeltaPlanner joinPlanner,
+                IVMAggDeltaPlanner aggPlanner, IVMDeltaPlanner unionPlanner) {
+            this.scanPlanner = scanPlanner;
+            this.joinPlanner = joinPlanner;
+            this.aggPlanner = aggPlanner;
+            this.unionPlanner = unionPlanner;
+        }
+    }
 
     /**
      * Plans the delta refresh for the given materialized view by dispatching

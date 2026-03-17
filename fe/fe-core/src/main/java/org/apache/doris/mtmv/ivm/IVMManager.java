@@ -21,6 +21,7 @@ import org.apache.doris.catalog.MTMV;
 import org.apache.doris.common.AnalysisException;
 import org.apache.doris.mtmv.MTMVRefreshContext;
 
+import com.google.common.annotations.VisibleForTesting;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -48,11 +49,30 @@ public class IVMManager {
 
     private static final Logger LOG = LogManager.getLogger(IVMManager.class);
 
-    private final IVMCapabilityChecker capabilityChecker = new IVMCapabilityChecker();
-    private final IVMPlanAnalyzer planAnalyzer = new IVMPlanAnalyzer();
-    private final IVMRefreshContextBuilder refreshContextBuilder = new IVMRefreshContextBuilder();
-    private final IVMDeltaPlannerDispatcher deltaPlannerDispatcher = new IVMDeltaPlannerDispatcher();
-    private final IVMDeltaExecutor deltaExecutor = new IVMDeltaExecutor();
+    private final IVMCapabilityChecker capabilityChecker;
+    private final IVMPlanAnalyzer planAnalyzer;
+    private final IVMRefreshContextBuilder refreshContextBuilder;
+    private final IVMDeltaPlannerDispatcher deltaPlannerDispatcher;
+    private final IVMDeltaExecutor deltaExecutor;
+
+    public IVMManager() {
+        this(new IVMCapabilityChecker(), new IVMPlanAnalyzer(), new IVMRefreshContextBuilder(),
+                new IVMDeltaPlannerDispatcher(), new IVMDeltaExecutor());
+    }
+
+    @VisibleForTesting
+    IVMManager(
+            IVMCapabilityChecker capabilityChecker,
+            IVMPlanAnalyzer planAnalyzer,
+            IVMRefreshContextBuilder refreshContextBuilder,
+            IVMDeltaPlannerDispatcher deltaPlannerDispatcher,
+            IVMDeltaExecutor deltaExecutor) {
+        this.capabilityChecker = capabilityChecker;
+        this.planAnalyzer = planAnalyzer;
+        this.refreshContextBuilder = refreshContextBuilder;
+        this.deltaPlannerDispatcher = deltaPlannerDispatcher;
+        this.deltaExecutor = deltaExecutor;
+    }
 
     /**
      * Attempts an incremental refresh for the given materialized view.

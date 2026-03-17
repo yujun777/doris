@@ -28,6 +28,7 @@ import org.apache.doris.nereids.trees.plans.Plan;
 import org.apache.doris.qe.ConnectContext;
 
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Set;
 
@@ -45,6 +46,22 @@ import java.util.Set;
  * </ol>
  */
 public class IVMRefreshContextBuilder {
+    private static final Comparator<BaseTableId> BASE_TABLE_ORDER_COMPARATOR = new Comparator<BaseTableId>() {
+        @Override
+        public int compare(BaseTableId left, BaseTableId right) {
+            BaseTableInfo leftTableInfo = left.getTableInfo();
+            BaseTableInfo rightTableInfo = right.getTableInfo();
+            int catalogCompare = leftTableInfo.getCtlName().compareTo(rightTableInfo.getCtlName());
+            if (catalogCompare != 0) {
+                return catalogCompare;
+            }
+            int dbCompare = leftTableInfo.getDbName().compareTo(rightTableInfo.getDbName());
+            if (dbCompare != 0) {
+                return dbCompare;
+            }
+            return leftTableInfo.getTableName().compareTo(rightTableInfo.getTableName());
+        }
+    };
 
     /**
      * Builds the IVM refresh context.
@@ -85,9 +102,10 @@ public class IVMRefreshContextBuilder {
      * Builds a stable, deterministic ordering of base tables for delta planning.
      *
      * <p>The order is derived from the base tables registered in the MV's
-     * relation metadata. Only tables that have stream bindings in {@link IVMInfo}
-     * are included. The order is deterministic (sorted by table info) to ensure
-     * consistent before/after snapshot assignment across refreshes.
+     * relation metadata. Stream binding validation happens later in
+     * {@link IVMCapabilityChecker}. The order is deterministic (sorted by
+     * catalog, database, and table name) to ensure consistent before/after
+     * snapshot assignment across refreshes.
      */
     private List<BaseTableId> buildBaseTableOrder(MTMV mtmv, IVMInfo ivmInfo) throws AnalysisException {
         MTMVRelation relation = mtmv.getRelation();
@@ -102,8 +120,7 @@ public class IVMRefreshContextBuilder {
         for (BaseTableInfo tableInfo : baseTables) {
             order.add(new BaseTableId(tableInfo));
         }
-        // Sort for deterministic ordering across refreshes
-        order.sort((a, b) -> a.toString().compareTo(b.toString()));
+        order.sort(BASE_TABLE_ORDER_COMPARATOR);
         return order;
     }
 }
