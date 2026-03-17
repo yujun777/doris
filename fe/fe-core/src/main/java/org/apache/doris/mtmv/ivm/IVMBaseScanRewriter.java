@@ -175,11 +175,7 @@ public class IVMBaseScanRewriter {
         private Plan bindSnapshot(
                 LogicalCatalogRelation relation, IVMTableSnapshot tableSnapshot, BaseTableId tableId) {
             if (relation instanceof SupportTableSnapshot) {
-                if (!tableSnapshot.asTableSnapshot().isPresent()) {
-                    throw new SnapshotBindingException(new AnalysisException(
-                            "Missing table snapshot binding for scan-capable base table: " + tableId));
-                }
-                return ((SupportTableSnapshot) relation).withTableSnapshot(tableSnapshot.asTableSnapshot().get());
+                return ((SupportTableSnapshot) relation).withTableSnapshot(tableSnapshot);
             }
             if (!tableSnapshot.asMvccSnapshot().isPresent()) {
                 throw new SnapshotBindingException(new AnalysisException(

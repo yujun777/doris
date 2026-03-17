@@ -17,10 +17,10 @@
 
 package org.apache.doris.nereids.trees.plans.logical;
 
-import org.apache.doris.analysis.TableSnapshot;
+import org.apache.doris.mtmv.ivm.IVMTableSnapshot;
 import org.apache.doris.nereids.trees.plans.Plan;
 
 /** Support rebinding a scan plan to a specific table snapshot. */
 public interface SupportTableSnapshot {
-    Plan withTableSnapshot(TableSnapshot tableSnapshot);
+    Plan withTableSnapshot(IVMTableSnapshot tableSnapshot);
 }
