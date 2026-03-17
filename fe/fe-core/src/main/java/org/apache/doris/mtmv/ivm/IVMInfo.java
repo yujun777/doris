@@ -29,11 +29,11 @@ import java.util.Map;
 public class IVMInfo {
     /** True while an incremental refresh is in progress; used for crash recovery. */
     @SerializedName("ir")
-    private boolean inIncrementalRefresh;
+    private boolean inIncrementalRefresh = false;
 
     /** Set to true when a stream reports it can no longer serve changes. */
     @SerializedName("bb")
-    private boolean binlogBroken;
+    private boolean binlogBroken = false;
 
     /** Per-base-table stream bindings. */
     @SerializedName("bs")
