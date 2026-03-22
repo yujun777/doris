@@ -6293,6 +6293,10 @@ public class SessionVariable implements Serializable, Writable {
         return enableDmlMaterializedViewRewrite;
     }
 
+    public void setEnableDmlMaterializedViewRewrite(boolean enableDmlMaterializedViewRewrite) {
+        this.enableDmlMaterializedViewRewrite = enableDmlMaterializedViewRewrite;
+    }
+
     public boolean isEnableDmlMaterializedViewRewriteWhenBaseTableUnawareness() {
         return enableDmlMaterializedViewRewriteWhenBaseTableUnawareness;
     }
