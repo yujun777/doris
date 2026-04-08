@@ -27,6 +27,7 @@ import org.apache.doris.job.extensions.mtmv.MTMVTask.MTMVTaskTriggerMode;
 import org.apache.doris.job.extensions.mtmv.MTMVTaskContext;
 import org.apache.doris.mtmv.MTMVPartitionInfo.MTMVPartitionType;
 import org.apache.doris.mtmv.MTMVRefreshEnum.RefreshMethod;
+import org.apache.doris.nereids.trees.plans.commands.info.RefreshMTMVInfo.RefreshMode;
 
 import com.google.common.collect.Lists;
 import com.google.common.collect.Sets;
@@ -101,7 +102,7 @@ public class MTMVTaskTest {
 
     @Test
     public void testCalculateNeedRefreshPartitionsManualComplete() throws AnalysisException {
-        MTMVTaskContext context = new MTMVTaskContext(MTMVTaskTriggerMode.MANUAL, null, true);
+        MTMVTaskContext context = new MTMVTaskContext(MTMVTaskTriggerMode.MANUAL, null, RefreshMode.COMPLETE);
         MTMVTask task = new MTMVTask(mtmv, relation, context);
         List<String> result = task.calculateNeedRefreshPartitions(null);
         Assert.assertEquals(allPartitionNames, result);
@@ -109,7 +110,8 @@ public class MTMVTaskTest {
 
     @Test
     public void testCalculateNeedRefreshPartitionsManualPartitions() throws AnalysisException {
-        MTMVTaskContext context = new MTMVTaskContext(MTMVTaskTriggerMode.MANUAL, Lists.newArrayList(poneName), false);
+        MTMVTaskContext context = new MTMVTaskContext(MTMVTaskTriggerMode.MANUAL, Lists.newArrayList(poneName),
+                RefreshMode.AUTO);
         MTMVTask task = new MTMVTask(mtmv, relation, context);
         List<String> result = task.calculateNeedRefreshPartitions(null);
         Assert.assertEquals(Lists.newArrayList(poneName), result);
