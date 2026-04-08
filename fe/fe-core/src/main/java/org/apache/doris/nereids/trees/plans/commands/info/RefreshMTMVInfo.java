@@ -31,6 +31,7 @@ import org.apache.doris.common.util.MetaLockUtils;
 import org.apache.doris.info.TableNameInfo;
 import org.apache.doris.mtmv.MTMVPartitionInfo.MTMVPartitionType;
 import org.apache.doris.mtmv.MTMVPartitionUtil;
+
 import org.apache.doris.mtmv.MTMVRelatedTableIf;
 import org.apache.doris.mysql.privilege.PrivPredicate;
 import org.apache.doris.nereids.exceptions.AnalysisException;
@@ -50,14 +51,25 @@ import java.util.Set;
  * refresh mtmv info
  */
 public class RefreshMTMVInfo {
+
+    /**
+     * Explicit refresh mode for manual REFRESH MATERIALIZED VIEW command.
+     */
+    public enum RefreshMode {
+        AUTO,
+        COMPLETE,
+        INCREMENTAL,
+        PARTITIONS
+    }
+
     private final TableNameInfo mvName;
     private List<String> partitions;
-    private boolean isComplete;
+    private RefreshMode refreshMode;
 
-    public RefreshMTMVInfo(TableNameInfo mvName, List<String> partitions, boolean isComplete) {
+    public RefreshMTMVInfo(TableNameInfo mvName, List<String> partitions, RefreshMode refreshMode) {
         this.mvName = Objects.requireNonNull(mvName, "require mvName object");
         this.partitions = Utils.copyRequiredList(partitions);
-        this.isComplete = Objects.requireNonNull(isComplete, "require isComplete object");
+        this.refreshMode = Objects.requireNonNull(refreshMode, "require refreshMode object");
     }
 
     /**
@@ -77,11 +89,28 @@ public class RefreshMTMVInfo {
         try {
             Database db = Env.getCurrentInternalCatalog().getDbOrDdlException(mvName.getDb());
             MTMV mtmv = (MTMV) db.getTableOrMetaException(mvName.getTbl(), TableType.MATERIALIZED_VIEW);
+            validateRefreshModeCompat(mtmv);
             if (!CollectionUtils.isEmpty(partitions)) {
                 checkPartitionExist(mtmv);
             }
         } catch (org.apache.doris.common.AnalysisException | MetaNotFoundException | DdlException e) {
             throw new AnalysisException(e.getMessage());
+        }
+    }
+
+    private void validateRefreshModeCompat(MTMV mtmv) {
+        boolean isIvm = mtmv.isIvm();
+        if (!isIvm
+                && (refreshMode == RefreshMode.INCREMENTAL
+                    || refreshMode == RefreshMode.PARTITIONS)) {
+            throw new AnalysisException(
+                    "Cannot use " + refreshMode
+                            + " refresh on a materialized view without INCREMENTAL capability.");
+        }
+        if (isIvm && !CollectionUtils.isEmpty(partitions)) {
+            throw new AnalysisException(
+                    "partitionSpec is not allowed on a materialized view with INCREMENTAL capability, "
+                            + "use PARTITIONS keyword instead.");
         }
     }
 
@@ -133,12 +162,21 @@ public class RefreshMTMVInfo {
     }
 
     /**
-     * isComplete
+     * getRefreshMode
      *
-     * @return isComplete
+     * @return RefreshMode
+     */
+    public RefreshMode getRefreshMode() {
+        return refreshMode;
+    }
+
+    /**
+     * isComplete - backward compatibility helper
+     *
+     * @return true if refresh mode is COMPLETE
      */
     public boolean isComplete() {
-        return isComplete;
+        return refreshMode == RefreshMode.COMPLETE;
     }
 
     @Override
@@ -146,7 +184,7 @@ public class RefreshMTMVInfo {
         return "RefreshMTMVInfo{"
                 + "mvName=" + mvName
                 + ", partitions=" + partitions
-                + ", isComplete=" + isComplete
+                + ", refreshMode=" + refreshMode
                 + '}';
     }
 }
