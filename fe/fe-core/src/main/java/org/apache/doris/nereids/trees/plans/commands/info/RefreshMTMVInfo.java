@@ -31,7 +31,6 @@ import org.apache.doris.common.util.MetaLockUtils;
 import org.apache.doris.info.TableNameInfo;
 import org.apache.doris.mtmv.MTMVPartitionInfo.MTMVPartitionType;
 import org.apache.doris.mtmv.MTMVPartitionUtil;
-
 import org.apache.doris.mtmv.MTMVRelatedTableIf;
 import org.apache.doris.mysql.privilege.PrivPredicate;
 import org.apache.doris.nereids.exceptions.AnalysisException;

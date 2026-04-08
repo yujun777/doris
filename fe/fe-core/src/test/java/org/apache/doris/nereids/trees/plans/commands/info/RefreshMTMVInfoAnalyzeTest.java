@@ -21,9 +21,9 @@ import org.apache.doris.catalog.Database;
 import org.apache.doris.catalog.Env;
 import org.apache.doris.catalog.MTMV;
 import org.apache.doris.catalog.TableIf;
-import org.apache.doris.datasource.InternalCatalog;
 import org.apache.doris.common.DdlException;
 import org.apache.doris.common.MetaNotFoundException;
+import org.apache.doris.datasource.InternalCatalog;
 import org.apache.doris.info.TableNameInfo;
 import org.apache.doris.mysql.privilege.AccessControllerManager;
 import org.apache.doris.mysql.privilege.PrivPredicate;
@@ -35,9 +35,9 @@ import com.google.common.collect.ImmutableList;
 import com.google.common.collect.Lists;
 import mockit.Expectations;
 import mockit.Mocked;
-import org.junit.Assert;
-import org.junit.Before;
-import org.junit.Test;
+import org.junit.jupiter.api.Assertions;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
 
 /**
  * Tests for RefreshMTMVInfo.analyze() constraint validation of INCREMENTAL/PARTITIONS modes.
@@ -59,7 +59,7 @@ public class RefreshMTMVInfoAnalyzeTest {
     private MTMV noIvmMtmv;
     private MTMV autoWithIvmMtmv;
 
-    @Before
+    @BeforeEach
     public void setUp() throws DdlException, MetaNotFoundException,
             org.apache.doris.common.AnalysisException {
         // MV with IVM capability (enableIvm = true)
@@ -73,28 +73,47 @@ public class RefreshMTMVInfoAnalyzeTest {
         autoWithIvmMtmv = new MTMV();
         autoWithIvmMtmv.getIvmInfo().setEnableIvm(true);
 
+        new Expectations() {
+            {
+                Env.getCurrentEnv();
+                result = env;
+                minTimes = 0;
+
+                env.getAccessManager();
+                result = accessManager;
+                minTimes = 0;
+
+                accessManager.checkTblPriv((ConnectContext) any, anyString, anyString,
+                        anyString, (PrivPredicate) any);
+                result = true;
+                minTimes = 0;
+
+                Env.getCurrentInternalCatalog();
+                result = catalog;
+                minTimes = 0;
+
+                catalog.getDbOrDdlException(anyString);
+                result = db;
+                minTimes = 0;
+            }
+        };
+    }
+
+    private void expectMvLookup(MTMV mtmv) throws DdlException, MetaNotFoundException,
+            org.apache.doris.common.AnalysisException {
         new Expectations() {{
-            Env.getCurrentEnv();
-            result = env;
-            minTimes = 0;
+                db.getTableOrMetaException("mv1", TableIf.TableType.MATERIALIZED_VIEW);
+                result = mtmv;
+            }};
+    }
 
-            env.getAccessManager();
-            result = accessManager;
-            minTimes = 0;
-
-            accessManager.checkTblPriv((ConnectContext) any, anyString, anyString,
-                    anyString, (PrivPredicate) any);
-            result = true;
-            minTimes = 0;
-
-            Env.getCurrentInternalCatalog();
-            result = catalog;
-            minTimes = 0;
-
-            catalog.getDbOrDdlException(anyString);
-            result = db;
-            minTimes = 0;
-        }};
+    private AnalysisException analyzeAndGetException(RefreshMTMVInfo info) {
+        try {
+            info.analyze(ctx);
+            return Assertions.fail("Expected AnalysisException");
+        } catch (AnalysisException e) {
+            return e;
+        }
     }
 
     private RefreshMTMVInfo createInfo(RefreshMode mode) {
@@ -114,42 +133,25 @@ public class RefreshMTMVInfoAnalyzeTest {
     // TC-8-5: MV without IVM capability executing REFRESH ... INCREMENTAL should error
     @Test
     public void testRefreshIncrementalOnNonIvmMVRejected() throws Exception {
-        new Expectations() {{
-            db.getTableOrMetaException("mv1", TableIf.TableType.MATERIALIZED_VIEW);
-            result = noIvmMtmv;
-        }};
+        expectMvLookup(noIvmMtmv);
         RefreshMTMVInfo info = createInfo(RefreshMode.INCREMENTAL);
-        try {
-            info.analyze(ctx);
-            Assert.fail("Expected AnalysisException");
-        } catch (AnalysisException e) {
-            Assert.assertTrue(e.getMessage().contains("INCREMENTAL"));
-        }
+        AnalysisException exception = analyzeAndGetException(info);
+        Assertions.assertTrue(exception.getMessage().contains("INCREMENTAL"));
     }
 
     // TC-8-6: MV without IVM capability executing REFRESH ... PARTITIONS should error
     @Test
     public void testRefreshPartitionsOnNonIvmMVRejected() throws Exception {
-        new Expectations() {{
-            db.getTableOrMetaException("mv1", TableIf.TableType.MATERIALIZED_VIEW);
-            result = noIvmMtmv;
-        }};
+        expectMvLookup(noIvmMtmv);
         RefreshMTMVInfo info = createInfo(RefreshMode.PARTITIONS);
-        try {
-            info.analyze(ctx);
-            Assert.fail("Expected AnalysisException");
-        } catch (AnalysisException e) {
-            Assert.assertTrue(e.getMessage().contains("PARTITIONS"));
-        }
+        AnalysisException exception = analyzeAndGetException(info);
+        Assertions.assertTrue(exception.getMessage().contains("PARTITIONS"));
     }
 
     // TC-8-7: IVM-capable MV executing REFRESH ... COMPLETE should succeed
     @Test
     public void testRefreshCompleteOnIvmMVAllowed() throws Exception {
-        new Expectations() {{
-            db.getTableOrMetaException("mv1", TableIf.TableType.MATERIALIZED_VIEW);
-            result = ivmCapableMtmv;
-        }};
+        expectMvLookup(ivmCapableMtmv);
         RefreshMTMVInfo info = createInfo(RefreshMode.COMPLETE);
         info.analyze(ctx);
     }
@@ -157,27 +159,17 @@ public class RefreshMTMVInfoAnalyzeTest {
     // TC-8-8: IVM-capable MV executing old PARTITION (p1, p2) partitionSpec should error
     @Test
     public void testPartitionSpecOnIvmMVRejected() throws Exception {
-        new Expectations() {{
-            db.getTableOrMetaException("mv1", TableIf.TableType.MATERIALIZED_VIEW);
-            result = ivmCapableMtmv;
-        }};
+        expectMvLookup(ivmCapableMtmv);
         RefreshMTMVInfo info = createInfoWithPartitions(RefreshMode.AUTO);
-        try {
-            info.analyze(ctx);
-            Assert.fail("Expected AnalysisException");
-        } catch (AnalysisException e) {
-            Assert.assertTrue(e.getMessage().contains("partitionSpec"));
-            Assert.assertTrue(e.getMessage().contains("INCREMENTAL"));
-        }
+        AnalysisException exception = analyzeAndGetException(info);
+        Assertions.assertTrue(exception.getMessage().contains("partitionSpec"));
+        Assertions.assertTrue(exception.getMessage().contains("INCREMENTAL"));
     }
 
     // IVM-capable MV with REFRESH ... AUTO should succeed
     @Test
     public void testRefreshAutoOnIvmMVAllowed() throws Exception {
-        new Expectations() {{
-            db.getTableOrMetaException("mv1", TableIf.TableType.MATERIALIZED_VIEW);
-            result = ivmCapableMtmv;
-        }};
+        expectMvLookup(ivmCapableMtmv);
         RefreshMTMVInfo info = createInfo(RefreshMode.AUTO);
         info.analyze(ctx);
     }
@@ -185,10 +177,7 @@ public class RefreshMTMVInfoAnalyzeTest {
     // IVM-capable MV with REFRESH ... INCREMENTAL should succeed
     @Test
     public void testRefreshIncrementalOnIvmMVAllowed() throws Exception {
-        new Expectations() {{
-            db.getTableOrMetaException("mv1", TableIf.TableType.MATERIALIZED_VIEW);
-            result = ivmCapableMtmv;
-        }};
+        expectMvLookup(ivmCapableMtmv);
         RefreshMTMVInfo info = createInfo(RefreshMode.INCREMENTAL);
         info.analyze(ctx);
     }
@@ -196,10 +185,7 @@ public class RefreshMTMVInfoAnalyzeTest {
     // MV without IVM capability with REFRESH ... COMPLETE should succeed
     @Test
     public void testRefreshCompleteOnNonIvmMVAllowed() throws Exception {
-        new Expectations() {{
-            db.getTableOrMetaException("mv1", TableIf.TableType.MATERIALIZED_VIEW);
-            result = noIvmMtmv;
-        }};
+        expectMvLookup(noIvmMtmv);
         RefreshMTMVInfo info = createInfo(RefreshMode.COMPLETE);
         info.analyze(ctx);
     }
@@ -207,10 +193,7 @@ public class RefreshMTMVInfoAnalyzeTest {
     // AUTO MV with IvmInfo: REFRESH ... INCREMENTAL should succeed (has IVM capability)
     @Test
     public void testRefreshIncrementalOnAutoMVWithIvmAllowed() throws Exception {
-        new Expectations() {{
-            db.getTableOrMetaException("mv1", TableIf.TableType.MATERIALIZED_VIEW);
-            result = autoWithIvmMtmv;
-        }};
+        expectMvLookup(autoWithIvmMtmv);
         RefreshMTMVInfo info = createInfo(RefreshMode.INCREMENTAL);
         info.analyze(ctx);
     }
@@ -218,16 +201,9 @@ public class RefreshMTMVInfoAnalyzeTest {
     // AUTO MV with IvmInfo: old partitionSpec should be rejected
     @Test
     public void testPartitionSpecOnAutoMVWithIvmRejected() throws Exception {
-        new Expectations() {{
-            db.getTableOrMetaException("mv1", TableIf.TableType.MATERIALIZED_VIEW);
-            result = autoWithIvmMtmv;
-        }};
+        expectMvLookup(autoWithIvmMtmv);
         RefreshMTMVInfo info = createInfoWithPartitions(RefreshMode.AUTO);
-        try {
-            info.analyze(ctx);
-            Assert.fail("Expected AnalysisException");
-        } catch (AnalysisException e) {
-            Assert.assertTrue(e.getMessage().contains("partitionSpec"));
-        }
+        AnalysisException exception = analyzeAndGetException(info);
+        Assertions.assertTrue(exception.getMessage().contains("partitionSpec"));
     }
 }

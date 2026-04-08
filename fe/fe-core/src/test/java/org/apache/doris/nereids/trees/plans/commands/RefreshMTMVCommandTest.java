@@ -17,13 +17,15 @@
 
 package org.apache.doris.nereids.trees.plans.commands;
 
+import org.apache.doris.analysis.StatementBase;
+import org.apache.doris.nereids.glue.LogicalPlanAdapter;
 import org.apache.doris.nereids.parser.NereidsParser;
 import org.apache.doris.nereids.trees.plans.commands.info.RefreshMTMVInfo;
 import org.apache.doris.nereids.trees.plans.commands.info.RefreshMTMVInfo.RefreshMode;
 import org.apache.doris.nereids.trees.plans.logical.LogicalPlan;
 
-import org.junit.Assert;
-import org.junit.Test;
+import org.junit.jupiter.api.Assertions;
+import org.junit.jupiter.api.Test;
 
 import java.lang.reflect.Field;
 
@@ -34,77 +36,85 @@ public class RefreshMTMVCommandTest {
 
     private final NereidsParser parser = new NereidsParser();
 
-    private RefreshMTMVInfo extractRefreshInfo(LogicalPlan plan) throws Exception {
-        Assert.assertTrue("Parsed plan should be RefreshMTMVCommand",
-                plan instanceof RefreshMTMVCommand);
+    private RefreshMTMVInfo extractRefreshInfo(String sql) throws Exception {
+        StatementBase statementBase = parser.parseSQL(sql).get(0);
+        Assertions.assertTrue(statementBase instanceof LogicalPlanAdapter,
+                "Parsed statement should be LogicalPlanAdapter");
+        LogicalPlan plan = ((LogicalPlanAdapter) statementBase).getLogicalPlan();
+        Assertions.assertTrue(plan instanceof RefreshMTMVCommand,
+                "Parsed plan should be RefreshMTMVCommand");
         Field field = RefreshMTMVCommand.class.getDeclaredField("refreshMTMVInfo");
         field.setAccessible(true);
         return (RefreshMTMVInfo) field.get(plan);
     }
 
+    private void assertParseFails(String sql) {
+        try {
+            parser.parseSQL(sql);
+            Assertions.fail("Expected Exception");
+        } catch (Exception e) {
+            // expected
+        }
+    }
+
     // TC-8-1: REFRESH MV ... INCREMENTAL can be parsed
     @Test
     public void testParseRefreshIncremental() throws Exception {
-        LogicalPlan plan = parser.parseSingle("REFRESH MATERIALIZED VIEW db1.mv1 INCREMENTAL");
-        RefreshMTMVInfo info = extractRefreshInfo(plan);
-        Assert.assertEquals(RefreshMode.INCREMENTAL, info.getRefreshMode());
-        Assert.assertTrue(info.getPartitions().isEmpty());
+        RefreshMTMVInfo info = extractRefreshInfo("REFRESH MATERIALIZED VIEW db1.mv1 INCREMENTAL");
+        Assertions.assertEquals(RefreshMode.INCREMENTAL, info.getRefreshMode());
+        Assertions.assertTrue(info.getPartitions().isEmpty());
     }
 
     // TC-8-2: REFRESH MV ... AUTO still parseable
     @Test
     public void testParseRefreshAuto() throws Exception {
-        LogicalPlan plan = parser.parseSingle("REFRESH MATERIALIZED VIEW db1.mv1 AUTO");
-        RefreshMTMVInfo info = extractRefreshInfo(plan);
-        Assert.assertEquals(RefreshMode.AUTO, info.getRefreshMode());
+        RefreshMTMVInfo info = extractRefreshInfo("REFRESH MATERIALIZED VIEW db1.mv1 AUTO");
+        Assertions.assertEquals(RefreshMode.AUTO, info.getRefreshMode());
     }
 
     // TC-8-3: REFRESH MV ... COMPLETE still parseable
     @Test
     public void testParseRefreshComplete() throws Exception {
-        LogicalPlan plan = parser.parseSingle("REFRESH MATERIALIZED VIEW db1.mv1 COMPLETE");
-        RefreshMTMVInfo info = extractRefreshInfo(plan);
-        Assert.assertEquals(RefreshMode.COMPLETE, info.getRefreshMode());
-        Assert.assertTrue(info.isComplete());
+        RefreshMTMVInfo info = extractRefreshInfo("REFRESH MATERIALIZED VIEW db1.mv1 COMPLETE");
+        Assertions.assertEquals(RefreshMode.COMPLETE, info.getRefreshMode());
+        Assertions.assertTrue(info.isComplete());
     }
 
     // TC-8-4: REFRESH MV ... PARTITIONS parsed as new refresh mode
     @Test
     public void testParseRefreshPartitionsMode() throws Exception {
-        LogicalPlan plan = parser.parseSingle("REFRESH MATERIALIZED VIEW db1.mv1 PARTITIONS");
-        RefreshMTMVInfo info = extractRefreshInfo(plan);
-        Assert.assertEquals(RefreshMode.PARTITIONS, info.getRefreshMode());
-        Assert.assertTrue(info.getPartitions().isEmpty());
+        RefreshMTMVInfo info = extractRefreshInfo("REFRESH MATERIALIZED VIEW db1.mv1 PARTITIONS");
+        Assertions.assertEquals(RefreshMode.PARTITIONS, info.getRefreshMode());
+        Assertions.assertTrue(info.getPartitions().isEmpty());
     }
 
     // TC-8-extra: REFRESH MV without mode should be rejected (syntax error)
-    @Test(expected = Exception.class)
+    @Test
     public void testParseRefreshWithoutModeFails() throws Exception {
-        parser.parseSingle("REFRESH MATERIALIZED VIEW db1.mv1");
+        assertParseFails("REFRESH MATERIALIZED VIEW db1.mv1");
     }
 
     // TC-8-extra: REFRESH MV with old-style partitionSpec still works
     @Test
     public void testParseRefreshWithPartitionSpec() throws Exception {
-        LogicalPlan plan = parser.parseSingle("REFRESH MATERIALIZED VIEW db1.mv1 PARTITIONS (p1, p2)");
-        RefreshMTMVInfo info = extractRefreshInfo(plan);
-        Assert.assertEquals(RefreshMode.AUTO, info.getRefreshMode());
-        Assert.assertEquals(2, info.getPartitions().size());
+        RefreshMTMVInfo info = extractRefreshInfo(
+                "REFRESH MATERIALIZED VIEW db1.mv1 PARTITIONS (p1, p2)");
+        Assertions.assertEquals(RefreshMode.AUTO, info.getRefreshMode());
+        Assertions.assertEquals(2, info.getPartitions().size());
     }
 
     // TC-8-extra: isComplete() backward compat — only true for COMPLETE mode
     @Test
     public void testIsCompleteBackwardCompat() throws Exception {
-        LogicalPlan completePlan = parser.parseSingle("REFRESH MATERIALIZED VIEW db1.mv1 COMPLETE");
-        RefreshMTMVInfo completeInfo = extractRefreshInfo(completePlan);
-        Assert.assertTrue(completeInfo.isComplete());
+        RefreshMTMVInfo completeInfo = extractRefreshInfo(
+                "REFRESH MATERIALIZED VIEW db1.mv1 COMPLETE");
+        Assertions.assertTrue(completeInfo.isComplete());
 
-        LogicalPlan incrementalPlan = parser.parseSingle("REFRESH MATERIALIZED VIEW db1.mv1 INCREMENTAL");
-        RefreshMTMVInfo incrementalInfo = extractRefreshInfo(incrementalPlan);
-        Assert.assertFalse(incrementalInfo.isComplete());
+        RefreshMTMVInfo incrementalInfo = extractRefreshInfo(
+                "REFRESH MATERIALIZED VIEW db1.mv1 INCREMENTAL");
+        Assertions.assertFalse(incrementalInfo.isComplete());
 
-        LogicalPlan autoPlan = parser.parseSingle("REFRESH MATERIALIZED VIEW db1.mv1 AUTO");
-        RefreshMTMVInfo autoInfo = extractRefreshInfo(autoPlan);
-        Assert.assertFalse(autoInfo.isComplete());
+        RefreshMTMVInfo autoInfo = extractRefreshInfo("REFRESH MATERIALIZED VIEW db1.mv1 AUTO");
+        Assertions.assertFalse(autoInfo.isComplete());
     }
 }
