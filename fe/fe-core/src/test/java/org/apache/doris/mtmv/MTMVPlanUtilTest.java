@@ -603,8 +603,6 @@ public class MTMVPlanUtilTest extends SqlTestBase {
         Assertions.assertTrue(exception.getMessage().contains("changed"));
     }
 
-    // ===== PR-5: validateColumns KeysType fix =====
-    //
     // Background:
     // IVM (INCREMENTAL) materialized views are internally stored as UNIQUE_KEYS + Merge-On-Write (MOW)
     // tables, while normal (COMPLETE) MVs use DUP_KEYS. The original validateColumns() hardcoded
@@ -685,7 +683,7 @@ public class MTMVPlanUtilTest extends SqlTestBase {
                         + "        as select * from test.T4;"));
     }
 
-    // Core PR-5 assertion: IVM value columns must have aggTypeImplicit=false (UNIQUE_KEYS+MOW behavior)
+    // IVM value columns must have aggTypeImplicit=false (UNIQUE_KEYS+MOW behavior)
     // Before the fix, validateColumns() used DUP_KEYS which incorrectly set aggTypeImplicit=true
     @Test
     public void testIncrementalMvColumnAggTypeNotImplicit() throws Exception {
