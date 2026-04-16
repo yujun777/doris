@@ -30,7 +30,6 @@ import org.apache.doris.catalog.DistributionInfo.DistributionInfoType;
 import org.apache.doris.catalog.Env;
 import org.apache.doris.catalog.KeysType;
 import org.apache.doris.catalog.MTMV;
-import org.apache.doris.catalog.OlapTable;
 import org.apache.doris.catalog.ScalarType;
 import org.apache.doris.catalog.TableIf;
 import org.apache.doris.catalog.TableIf.TableType;
@@ -506,7 +505,6 @@ public class MTMVPlanUtil {
         MTMVAnalyzeQueryInfo queryInfo = analyzeQueryInternal(ctx, mvProperties, mvPartitionDefinition, distribution,
                 simpleColumnDefinitions, properties, keys, logicalQuery, true,
                 getExcludedTriggerTables(mvProperties));
-        validateIncrementalBaseTableModels(queryInfo.getRelation(), mvProperties);
         return queryInfo;
     }
 
@@ -625,50 +623,6 @@ public class MTMVPlanUtil {
                         || newExcludedTriggerTable.getDb().equals(oldExcludedTriggerTable.getDb()))
                 && (StringUtils.isEmpty(newExcludedTriggerTable.getCtl())
                         || newExcludedTriggerTable.getCtl().equals(oldExcludedTriggerTable.getCtl()));
-    }
-
-    public static void validateIncrementalBaseTableModels(MTMVRelation relation, Map<String, String> mvProperties) {
-        Set<TableNameInfo> excludedTriggerTables = getExcludedTriggerTables(mvProperties);
-        if (relation == null || relation.getBaseTablesOneLevelAndFromView() == null) {
-            return;
-        }
-        for (BaseTableInfo baseTableInfo : relation.getBaseTablesOneLevelAndFromView()) {
-            final TableIf table;
-            try {
-                table = MTMVUtil.getTable(baseTableInfo);
-            } catch (org.apache.doris.common.AnalysisException e) {
-                throw new AnalysisException(e.getMessage(), e);
-            }
-            TableNameInfo tableNameInfo = new TableNameInfo(baseTableInfo.getCtlName(),
-                    baseTableInfo.getDbName(), baseTableInfo.getTableName());
-            if (MTMVPartitionUtil.isTableExcluded(excludedTriggerTables, tableNameInfo)) {
-                continue;
-            }
-            if (!(table instanceof OlapTable)) {
-                throw new AnalysisException(
-                        "INCREMENTAL materialized view only supports OlapTable base tables. "
-                                + "Table '" + table.getName() + "' is " + table.getType() + ".");
-            }
-            OlapTable olapTable = (OlapTable) table;
-            if (olapTable.getKeysType() != KeysType.UNIQUE_KEYS
-                    && olapTable.getKeysType() != KeysType.DUP_KEYS) {
-                throw new AnalysisException(
-                        "INCREMENTAL materialized view requires base tables to be "
-                                + "UNIQUE_KEYS with Merge-On-Write or DUP_KEYS. Table '"
-                                + olapTable.getName() + "' is " + olapTable.getKeysType()
-                                + ". If this table does not participate in incremental refresh, "
-                                + "add it to 'excluded_trigger_tables'.");
-            }
-            if (olapTable.getKeysType() == KeysType.UNIQUE_KEYS
-                    && !olapTable.getEnableUniqueKeyMergeOnWrite()) {
-                throw new AnalysisException(
-                        "INCREMENTAL materialized view requires UNIQUE_KEYS base tables "
-                                + "to enable Merge-On-Write. Table '"
-                                + olapTable.getName() + "' has MOW disabled."
-                                + " If this table does not participate in incremental refresh, "
-                                + "add it to 'excluded_trigger_tables'.");
-            }
-        }
     }
 
     /**
