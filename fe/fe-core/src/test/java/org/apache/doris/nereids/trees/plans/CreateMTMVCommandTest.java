@@ -23,6 +23,7 @@ import org.apache.doris.catalog.Column;
 import org.apache.doris.catalog.Database;
 import org.apache.doris.catalog.Env;
 import org.apache.doris.catalog.MTMV;
+import org.apache.doris.catalog.info.TableNameInfo;
 import org.apache.doris.common.Config;
 import org.apache.doris.mtmv.MTMVRefreshEnum.RefreshMethod;
 import org.apache.doris.nereids.StatementContext;
@@ -909,7 +910,7 @@ public class CreateMTMVCommandTest extends TestWithFeService {
     }
 
     @Test
-    public void testAlterExcludedTriggerTablesRejectsIncompatibleModel() throws Exception {
+    public void testAlterExcludedTriggerTablesRejectsShrinkingCoverage() throws Exception {
         createTable("create table test.ivm_alter_agg_base (k1 int, v1 int SUM)\n"
                 + "aggregate key(k1)\n"
                 + "distributed by hash(k1) buckets 1\n"
@@ -926,7 +927,49 @@ public class CreateMTMVCommandTest extends TestWithFeService {
         AnalysisException ex = Assertions.assertThrows(AnalysisException.class,
                 () -> alterMtmv("ALTER MATERIALIZED VIEW ivm_alter_excluded_mv "
                         + "SET ('excluded_trigger_tables' = '')"));
-        Assertions.assertTrue(ex.getMessage().contains("requires base tables to be"),
+        Assertions.assertTrue(ex.getMessage().contains("can only be expanded"),
+                "unexpected message: " + ex.getMessage());
+    }
+
+    @Test
+    public void testAlterExcludedTriggerTablesAllowsExpandingCoverage() throws Exception {
+        createTable("create table test.ivm_expand_agg_base (k1 int, v1 int SUM)\n"
+                + "aggregate key(k1)\n"
+                + "distributed by hash(k1) buckets 1\n"
+                + "properties('replication_num' = '1');");
+        createMtmv("CREATE MATERIALIZED VIEW ivm_expand_excluded_mv\n"
+                + " BUILD DEFERRED REFRESH INCREMENTAL ON MANUAL\n"
+                + " DISTRIBUTED BY RANDOM BUCKETS 2\n"
+                + " PROPERTIES ('replication_num' = '1', 'excluded_trigger_tables' = 'test.ivm_expand_agg_base')\n"
+                + " AS SELECT k1 FROM ivm_expand_agg_base;");
+        MTMV mtmv = getMtmv("ivm_expand_excluded_mv");
+        Assertions.assertTrue(mtmv.isIvm());
+
+        alterMtmv("ALTER MATERIALIZED VIEW ivm_expand_excluded_mv "
+                + "SET ('excluded_trigger_tables' = 'ivm_expand_agg_base')");
+
+        Assertions.assertEquals(1, mtmv.getExcludedTriggerTables().size());
+        Assertions.assertTrue(mtmv.getExcludedTriggerTables().contains(new TableNameInfo("ivm_expand_agg_base")));
+    }
+
+    @Test
+    public void testAlterExcludedTriggerTablesRejectsNarrowingConfiguredScope() throws Exception {
+        createTable("create table test.ivm_narrow_agg_base (k1 int, v1 int SUM)\n"
+                + "aggregate key(k1)\n"
+                + "distributed by hash(k1) buckets 1\n"
+                + "properties('replication_num' = '1');");
+        createMtmv("CREATE MATERIALIZED VIEW ivm_narrow_excluded_mv\n"
+                + " BUILD DEFERRED REFRESH INCREMENTAL ON MANUAL\n"
+                + " DISTRIBUTED BY RANDOM BUCKETS 2\n"
+                + " PROPERTIES ('replication_num' = '1', 'excluded_trigger_tables' = 'ivm_narrow_agg_base')\n"
+                + " AS SELECT k1 FROM ivm_narrow_agg_base;");
+        MTMV mtmv = getMtmv("ivm_narrow_excluded_mv");
+        Assertions.assertTrue(mtmv.isIvm());
+
+        AnalysisException ex = Assertions.assertThrows(AnalysisException.class,
+                () -> alterMtmv("ALTER MATERIALIZED VIEW ivm_narrow_excluded_mv "
+                        + "SET ('excluded_trigger_tables' = 'test.ivm_narrow_agg_base')"));
+        Assertions.assertTrue(ex.getMessage().contains("can only be expanded"),
                 "unexpected message: " + ex.getMessage());
     }
 }
