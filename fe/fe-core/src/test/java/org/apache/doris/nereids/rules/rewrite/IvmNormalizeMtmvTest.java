@@ -258,19 +258,43 @@ class IvmNormalizeMtmvTest {
     }
 
     @Test
-    void testExcludedAggKeyTableUsesTransientRowId() {
-        OlapTable aggTable = newOlapTableWithBoundDb(12, "agg", KeysType.AGG_KEYS, "test");
+    void testExcludedAggKeyTableUsesDeterministicRowIdHashOnAggKeys() {
+        OlapTable aggTable = newAggKeyOlapTableWithBoundDb(12, "agg", "test");
         LogicalOlapScan aggScan = new LogicalOlapScan(
                 PlanConstructor.getNextRelationId(), aggTable, ImmutableList.of("test"));
 
-        Plan result = new IvmNormalizeMtmv().rewriteRoot(aggScan, newJobContextForRoot(aggScan, true,
-                Collections.singleton(new TableNameInfo("internal", "test", "agg"))));
+        JobContext jobContext = newJobContextForRoot(aggScan, true,
+                Collections.singleton(new TableNameInfo("internal", "test", "agg")));
+        Plan result = new IvmNormalizeMtmv().rewriteRoot(aggScan, jobContext);
 
         Assertions.assertInstanceOf(LogicalProject.class, result);
         LogicalProject<?> project = (LogicalProject<?>) result;
         Assertions.assertInstanceOf(Alias.class, project.getProjects().get(0));
         Alias rowIdAlias = (Alias) project.getProjects().get(0);
-        Assertions.assertInstanceOf(UuidNumeric.class, rowIdAlias.child());
+        Assertions.assertInstanceOf(Cast.class, rowIdAlias.child());
+        Assertions.assertEquals(
+                IvmUtil.buildRowIdHash(ImmutableList.of(aggScan.getOutput().get(0))).toSql(),
+                rowIdAlias.child().toSql());
+        IvmNormalizeResult normalizeResult = jobContext.getCascadesContext().getIvmNormalizeResult().get();
+        Assertions.assertTrue(normalizeResult.getRowIdDeterminism().values().iterator().next());
+    }
+
+    @Test
+    void testExcludedAggKeyRowIdDoesNotIncludeValueColumns() {
+        OlapTable aggTable = newAggKeyOlapTableWithBoundDb(14, "agg_value_check", "test");
+        LogicalOlapScan aggScan = new LogicalOlapScan(
+                PlanConstructor.getNextRelationId(), aggTable, ImmutableList.of("test"));
+
+        Plan result = new IvmNormalizeMtmv().rewriteRoot(aggScan, newJobContextForRoot(aggScan, true,
+                Collections.singleton(new TableNameInfo("internal", "test", "agg_value_check"))));
+
+        Assertions.assertInstanceOf(LogicalProject.class, result);
+        LogicalProject<?> project = (LogicalProject<?>) result;
+        Assertions.assertInstanceOf(Alias.class, project.getProjects().get(0));
+        Alias rowIdAlias = (Alias) project.getProjects().get(0);
+        Assertions.assertNotEquals(
+                IvmUtil.buildRowIdHash(aggScan.getOutput()).toSql(),
+                rowIdAlias.child().toSql());
     }
 
     @Test
@@ -731,6 +755,25 @@ class IvmNormalizeMtmvTest {
         };
         table.setIndexMeta(-1, tableName, table.getFullSchema(), 0, 0, (short) 0,
                 TStorageType.COLUMN, keysType);
+        table.setQualifiedDbName(dbName);
+        return table;
+    }
+
+    private OlapTable newAggKeyOlapTableWithBoundDb(long tableId, String tableName, String dbName) {
+        Database database = new Database(1L, dbName);
+        List<Column> columns = ImmutableList.of(
+                new Column("id", Type.INT, true, AggregateType.NONE, "0", ""),
+                new Column("value_sum", Type.INT, false, AggregateType.SUM, "0", ""));
+        HashDistributionInfo distributionInfo = new HashDistributionInfo(3, ImmutableList.of(columns.get(0)));
+        OlapTable table = new OlapTable(tableId, tableName, columns, KeysType.AGG_KEYS,
+                new PartitionInfo(), distributionInfo) {
+            @Override
+            public Database getDatabase() {
+                return database;
+            }
+        };
+        table.setIndexMeta(-1, tableName, table.getFullSchema(), 0, 0, (short) 0,
+                TStorageType.COLUMN, KeysType.AGG_KEYS);
         table.setQualifiedDbName(dbName);
         return table;
     }
