@@ -157,7 +157,7 @@ public class IvmNormalizeMtmv extends DefaultPlanRewriter<Boolean> implements Cu
     @Override
     public Plan visitLogicalOlapScan(LogicalOlapScan scan, Boolean isFirstNonSink) {
         OlapTable table = scan.getTable();
-        Pair<Expression, Boolean> rowId = buildRowId(table, scan, isExcludedTriggerTable(table));
+        Pair<Expression, Boolean> rowId = buildRowId(table, scan);
         Alias rowIdAlias = new Alias(rowId.first, Column.IVM_ROW_ID_COL);
         normalizeResult.addRowId(rowIdAlias.toSlot(), rowId.second);
         List<NamedExpression> outputs = ImmutableList.<NamedExpression>builder()
@@ -482,9 +482,9 @@ public class IvmNormalizeMtmv extends DefaultPlanRewriter<Boolean> implements Cu
      * - Excluded AGG_KEYS: (buildRowIdHash(agg key...), true)             — stable across refreshes
      * - Other key types: throws AnalysisException (unless excluded trigger table)
      */
-    private Pair<Expression, Boolean> buildRowId(OlapTable table, LogicalOlapScan scan,
-            boolean isExcludedTriggerTable) {
+    private Pair<Expression, Boolean> buildRowId(OlapTable table, LogicalOlapScan scan) {
         KeysType keysType = table.getKeysType();
+        boolean isExcludedTriggerTable = isExcludedTriggerTable(table);
         if (keysType == KeysType.UNIQUE_KEYS) {
             if (!table.getEnableUniqueKeyMergeOnWrite() && !isExcludedTriggerTable) {
                 throw new AnalysisException(
