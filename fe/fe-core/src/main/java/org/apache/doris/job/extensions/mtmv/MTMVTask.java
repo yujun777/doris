@@ -52,6 +52,7 @@ import org.apache.doris.mtmv.MTMVPartitionUtil;
 import org.apache.doris.mtmv.MTMVPlanUtil;
 import org.apache.doris.mtmv.MTMVRefreshContext;
 import org.apache.doris.mtmv.MTMVRefreshEnum.MTMVState;
+import org.apache.doris.mtmv.MTMVRefreshEnum.MTMVRefreshState;
 import org.apache.doris.mtmv.MTMVRefreshEnum.RefreshMethod;
 import org.apache.doris.mtmv.MTMVRefreshPartitionSnapshot;
 import org.apache.doris.mtmv.MTMVRelatedTableIf;
@@ -243,30 +244,33 @@ public class MTMVTask extends AbstractTask {
             if (refreshMode == MTMVTaskRefreshMode.NOT_REFRESH) {
                 return;
             }
-            // Attempt IVM refresh only when refresh mode is AUTO (scheduled) or INCREMENTAL (manual).
-            // COMPLETE and PARTITIONS always skip IVM and go straight to partition-based refresh.
+            // --- IVM (Incremental View Maintenance) decision ---
+            // IVM is attempted only for IVM-capable MVs with AUTO or INCREMENTAL mode.
+            // Decision matrix:
+            //   Bootstrap (INIT state) + non-explicit-incremental → skip IVM, do full refresh
+            //   Bootstrap (INIT state) + explicit incremental     → let IVM try
+            //   IVM succeeds                                      → done, return early
+            //   IVM fails + explicit incremental                  → error (never silently fall back)
+            //   IVM fails + other                                 → fall back to partition-based refresh
             RefreshMode currentRefreshMode = taskContext.getRefreshMode();
             if (mtmv.isIvm()
                     && (currentRefreshMode == RefreshMode.AUTO
                         || currentRefreshMode == RefreshMode.INCREMENTAL)) {
-                IvmRefreshManager ivmRefreshManager = new IvmRefreshManager();
-                IvmRefreshResult ivmResult = ivmRefreshManager.doRefresh(mtmv);
-                if (ivmResult.isSuccess()) {
-                    LOG.info("IVM incremental refresh succeeded for mv={}, taskId={}",
-                            mtmv.getName(), getTaskId());
-                    return;
+                boolean strictIncremental = taskContext.getTriggerMode() == MTMVTaskTriggerMode.MANUAL
+                        && currentRefreshMode == RefreshMode.INCREMENTAL;
+                boolean isBootstrap = mtmv.getStatus().getRefreshState() == MTMVRefreshState.INIT;
+                if (isBootstrap && !strictIncremental) {
+                    LOG.info("IVM bootstrap: first refresh for mv={}, skipping IVM, "
+                            + "will do full refresh, taskId={}", mtmv.getName(), getTaskId());
+                } else {
+                    IvmRefreshResult ivmResult = new IvmRefreshManager().doRefresh(mtmv);
+                    if (ivmResult.isSuccess()) {
+                        LOG.info("IVM incremental refresh succeeded for mv={}, taskId={}",
+                                mtmv.getName(), getTaskId());
+                        return;
+                    }
+                    handleIvmFailure(ivmResult, strictIncremental);
                 }
-                // INCREMENTAL was explicitly requested; do not fall back to full refresh.
-                if (currentRefreshMode == RefreshMode.INCREMENTAL) {
-                    throw new JobException(
-                            "IVM incremental refresh failed for mv=" + mtmv.getName()
-                            + ", reason=" + ivmResult.getFallbackReason()
-                            + ", detail=" + ivmResult.getDetailMessage());
-                }
-                LOG.warn("IVM refresh fell back for mv={}, reason={}, detail={}, taskId={}. "
-                        + "Continuing with partition-based refresh.",
-                        mtmv.getName(), ivmResult.getFallbackReason(),
-                        ivmResult.getDetailMessage(), getTaskId());
             }
             Map<TableIf, String> tableWithPartKey = getIncrementalTableMap();
             // Capture base table TSOs BEFORE the full refresh executes, so we record the
@@ -629,6 +633,23 @@ public class MTMVTask extends AbstractTask {
             }
         }
         return tableWithPartKey;
+    }
+
+    /**
+     * Handle IVM refresh failure: error out for strict incremental, fall back otherwise.
+     */
+    private void handleIvmFailure(IvmRefreshResult ivmResult, boolean strictIncremental)
+            throws JobException {
+        if (strictIncremental) {
+            throw new JobException(
+                    "IVM incremental refresh failed for mv=" + mtmv.getName()
+                    + ", reason=" + ivmResult.getFallbackReason()
+                    + ", detail=" + ivmResult.getDetailMessage());
+        }
+        LOG.warn("IVM refresh fell back for mv={}, reason={}, detail={}, taskId={}. "
+                + "Continuing with partition-based refresh.",
+                mtmv.getName(), ivmResult.getFallbackReason(),
+                ivmResult.getDetailMessage(), getTaskId());
     }
 
     private MTMVTaskRefreshMode generateRefreshMode(List<String> needRefreshPartitionIds) {
