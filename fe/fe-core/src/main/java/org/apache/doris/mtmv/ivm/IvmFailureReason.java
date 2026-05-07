@@ -20,6 +20,7 @@ package org.apache.doris.mtmv.ivm;
 /** Reasons IVM analysis or execution can fail. */
 public enum IvmFailureReason {
     BINLOG_BROKEN,
+    BINLOG_NOT_ENABLED,
     STREAM_UNSUPPORTED,
     SNAPSHOT_ALIGNMENT_UNSUPPORTED,
     PLAN_PATTERN_UNSUPPORTED,
