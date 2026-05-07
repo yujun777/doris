@@ -104,6 +104,22 @@ public class IvmRefreshManagerTest {
     }
 
     @Test
+    public void testManagerReturnsBinlogNotEnabledFallbackOnDedicatedException() {
+        MTMV mtmv = mockMtmv();
+        TestDeltaExecutor executor = new TestDeltaExecutor();
+        TestIvmRefreshManager manager = new TestIvmRefreshManager(executor,
+                newContext(mtmv), Collections.emptyList());
+        manager.throwBinlogNotEnabledOnAnalyze = true;
+
+        IvmRefreshResult result = manager.doRefresh(mtmv);
+
+        Assertions.assertFalse(result.isSuccess());
+        Assertions.assertEquals(IvmFallbackReason.BINLOG_NOT_ENABLED, result.getFallbackReason());
+        Assertions.assertTrue(result.getDetailMessage().contains("no_binlog"));
+        Assertions.assertFalse(executor.executeCalled);
+    }
+
+    @Test
     public void testManagerReturnsSnapshotFallbackWhenBuildContextFails() {
         MTMV mtmv = mockMtmv();
         TestDeltaExecutor executor = new TestDeltaExecutor();
@@ -388,6 +404,7 @@ public class IvmRefreshManagerTest {
         private final IvmRefreshContext context;
         private final List<Command> commands;
         private boolean throwOnBuild;
+        private boolean throwBinlogNotEnabledOnAnalyze;
         private boolean useSuperPrecheck;
         /** Snapshots of runningIvmRefresh at each persistIvmInfo call. */
         private final List<Boolean> persistCalls = new ArrayList<>();
@@ -417,6 +434,9 @@ public class IvmRefreshManagerTest {
 
         @Override
         List<Command> analyzeDeltaCommands(IvmRefreshContext ctx) {
+            if (throwBinlogNotEnabledOnAnalyze) {
+                throw new IvmBinlogNotEnabledException("binlog is not enabled for table: no_binlog");
+            }
             return commands;
         }
 

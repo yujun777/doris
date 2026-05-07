@@ -17,17 +17,11 @@
 
 package org.apache.doris.mtmv.ivm;
 
-/** Reasons an incremental refresh may fall back to partition or full refresh. */
-public enum IvmFallbackReason {
-    BINLOG_BROKEN,
-    BINLOG_NOT_ENABLED,
-    STREAM_UNSUPPORTED,
-    SNAPSHOT_ALIGNMENT_UNSUPPORTED,
-    PLAN_PATTERN_UNSUPPORTED,
-    NON_DETERMINISTIC_ROW_ID,
-    OUTER_JOIN_RETRACTION_UNSUPPORTED,
-    PREVIOUS_RUN_INCOMPLETE,
-    INCREMENTAL_EXECUTION_FAILED,
-    AGG_UNSUPPORTED,
-    MIN_MAX_BOUNDARY_HIT
+import org.apache.doris.nereids.exceptions.AnalysisException;
+
+/** Thrown when an IVM base table participates in delta refresh but has binlog disabled. */
+public class IvmBinlogNotEnabledException extends AnalysisException {
+    public IvmBinlogNotEnabledException(String message) {
+        super(message);
+    }
 }

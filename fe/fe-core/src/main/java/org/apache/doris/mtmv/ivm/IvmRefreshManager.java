@@ -202,6 +202,11 @@ public class IvmRefreshManager {
         List<Command> commands;
         try {
             commands = analyzeDeltaCommands(context);
+        } catch (IvmBinlogNotEnabledException e) {
+            IvmRefreshResult result = IvmRefreshResult.fallback(
+                    IvmFallbackReason.BINLOG_NOT_ENABLED, e.getMessage());
+            LOG.warn("IVM base table binlog is not enabled for mv={}, result={}", mtmv.getName(), result, e);
+            return result;
         } catch (Exception e) {
             String detail = e.getMessage() != null ? e.getMessage()
                     : e.getClass().getName() + " (no message)";
