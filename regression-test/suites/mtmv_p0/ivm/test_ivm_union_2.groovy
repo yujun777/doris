@@ -42,7 +42,8 @@ suite("test_ivm_union_2") {
         DISTRIBUTED BY HASH(k1) BUCKETS 2
         PROPERTIES (
             "replication_num" = "1",
-            "enable_unique_key_merge_on_write" = "true"
+            "enable_unique_key_merge_on_write" = "true",
+            "binlog.enable" = "true"
         );
     """
 
@@ -53,7 +54,10 @@ suite("test_ivm_union_2") {
         )
         DUPLICATE KEY(k1)
         DISTRIBUTED BY HASH(k1) BUCKETS 2
-        PROPERTIES ("replication_num" = "1");
+        PROPERTIES (
+            "replication_num" = "1",
+            "binlog.enable" = "true"
+        );
     """
 
     sql """
@@ -115,7 +119,8 @@ suite("test_ivm_union_2") {
         DISTRIBUTED BY HASH(k1) BUCKETS 2
         PROPERTIES (
             "replication_num" = "1",
-            "enable_unique_key_merge_on_write" = "true"
+            "enable_unique_key_merge_on_write" = "true",
+            "binlog.enable" = "true"
         );
     """
 
@@ -128,7 +133,8 @@ suite("test_ivm_union_2") {
         DISTRIBUTED BY HASH(k1) BUCKETS 2
         PROPERTIES (
             "replication_num" = "1",
-            "enable_unique_key_merge_on_write" = "true"
+            "enable_unique_key_merge_on_write" = "true",
+            "binlog.enable" = "true"
         );
     """
 
@@ -141,7 +147,8 @@ suite("test_ivm_union_2") {
         DISTRIBUTED BY HASH(k1) BUCKETS 2
         PROPERTIES (
             "replication_num" = "1",
-            "enable_unique_key_merge_on_write" = "true"
+            "enable_unique_key_merge_on_write" = "true",
+            "binlog.enable" = "true"
         );
     """
 
@@ -154,7 +161,8 @@ suite("test_ivm_union_2") {
         DISTRIBUTED BY HASH(k1) BUCKETS 2
         PROPERTIES (
             "replication_num" = "1",
-            "enable_unique_key_merge_on_write" = "true"
+            "enable_unique_key_merge_on_write" = "true",
+            "binlog.enable" = "true"
         );
     """
 
@@ -218,7 +226,8 @@ suite("test_ivm_union_2") {
         DISTRIBUTED BY HASH(k1) BUCKETS 2
         PROPERTIES (
             "replication_num" = "1",
-            "enable_unique_key_merge_on_write" = "true"
+            "enable_unique_key_merge_on_write" = "true",
+            "binlog.enable" = "true"
         );
     """
 
@@ -231,7 +240,8 @@ suite("test_ivm_union_2") {
         DISTRIBUTED BY HASH(k1) BUCKETS 2
         PROPERTIES (
             "replication_num" = "1",
-            "enable_unique_key_merge_on_write" = "true"
+            "enable_unique_key_merge_on_write" = "true",
+            "binlog.enable" = "true"
         );
     """
 
@@ -244,7 +254,8 @@ suite("test_ivm_union_2") {
         DISTRIBUTED BY HASH(k1) BUCKETS 2
         PROPERTIES (
             "replication_num" = "1",
-            "enable_unique_key_merge_on_write" = "true"
+            "enable_unique_key_merge_on_write" = "true",
+            "binlog.enable" = "true"
         );
     """
 
@@ -308,7 +319,8 @@ suite("test_ivm_union_2") {
         DISTRIBUTED BY HASH(k1) BUCKETS 2
         PROPERTIES (
             "replication_num" = "1",
-            "enable_unique_key_merge_on_write" = "true"
+            "enable_unique_key_merge_on_write" = "true",
+            "binlog.enable" = "true"
         );
     """
 
@@ -321,7 +333,8 @@ suite("test_ivm_union_2") {
         DISTRIBUTED BY HASH(k2) BUCKETS 2
         PROPERTIES (
             "replication_num" = "1",
-            "enable_unique_key_merge_on_write" = "true"
+            "enable_unique_key_merge_on_write" = "true",
+            "binlog.enable" = "true"
         );
     """
 
@@ -382,7 +395,8 @@ suite("test_ivm_union_2") {
         DISTRIBUTED BY HASH(k1) BUCKETS 2
         PROPERTIES (
             "replication_num" = "1",
-            "enable_unique_key_merge_on_write" = "true"
+            "enable_unique_key_merge_on_write" = "true",
+            "binlog.enable" = "true"
         );
     """
 
@@ -395,7 +409,8 @@ suite("test_ivm_union_2") {
         DISTRIBUTED BY HASH(k1) BUCKETS 2
         PROPERTIES (
             "replication_num" = "1",
-            "enable_unique_key_merge_on_write" = "true"
+            "enable_unique_key_merge_on_write" = "true",
+            "binlog.enable" = "true"
         );
     """
 
