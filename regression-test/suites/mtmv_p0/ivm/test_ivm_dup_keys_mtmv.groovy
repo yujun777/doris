@@ -33,8 +33,7 @@ suite("test_ivm_dup_keys_mtmv") {
         DUPLICATE KEY(k1)
         DISTRIBUTED BY HASH(k1) BUCKETS 2
         PROPERTIES (
-            "replication_num" = "1",
-            "binlog.enable" = "true"
+            "replication_num" = "1"
         );
     """
 

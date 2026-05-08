@@ -33,8 +33,7 @@ suite("test_ivm_basic_mtmv") {
         DISTRIBUTED BY HASH(k1) BUCKETS 2
         PROPERTIES (
             "replication_num" = "1",
-            "enable_unique_key_merge_on_write" = "true",
-            "binlog.enable" = "true"
+            "enable_unique_key_merge_on_write" = "true"
         );
     """
 
@@ -136,8 +135,7 @@ suite("test_ivm_basic_mtmv") {
         DISTRIBUTED BY HASH(k1) BUCKETS 2
         PROPERTIES (
             "replication_num" = "1",
-            "enable_unique_key_merge_on_write" = "true",
-            "binlog.enable" = "true"
+            "enable_unique_key_merge_on_write" = "true"
         );
     """
 
@@ -220,8 +218,7 @@ suite("test_ivm_basic_mtmv") {
         DISTRIBUTED BY HASH(k1) BUCKETS 2
         PROPERTIES (
             "replication_num" = "1",
-            "enable_unique_key_merge_on_write" = "true",
-            "binlog.enable" = "true"
+            "enable_unique_key_merge_on_write" = "true"
         );
     """
 
