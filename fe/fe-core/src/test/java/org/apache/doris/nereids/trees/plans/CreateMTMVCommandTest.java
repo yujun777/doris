@@ -331,6 +331,35 @@ public class CreateMTMVCommandTest extends TestWithFeService {
     }
 
     @Test
+    public void testCreateAutoMTMVFallsBackToNonIvmOnIvmException() throws Exception {
+        createTable("create table test.mtmv_auto_fallback_agg_base (k1 int, v1 int SUM)\n"
+                + "aggregate key(k1)\n"
+                + "distributed by hash(k1) buckets 1\n"
+                + "properties('replication_num' = '1');");
+
+        CreateMTMVInfo info = getPartitionTableInfo("CREATE MATERIALIZED VIEW mtmv_auto_fallback_agg\n"
+                + " BUILD DEFERRED REFRESH AUTO ON MANUAL\n"
+                + " DISTRIBUTED BY RANDOM BUCKETS 2\n"
+                + " PROPERTIES ('replication_num' = '1')\n"
+                + " AS SELECT k1 FROM mtmv_auto_fallback_agg_base;");
+
+        Assertions.assertFalse(info.isEnableIvm());
+    }
+
+    @Test
+    public void testCreateAutoMTMVDoesNotFallbackOnGeneralAnalysisException() throws Exception {
+        AnalysisException ex = Assertions.assertThrows(AnalysisException.class,
+                () -> getPartitionTableInfo("CREATE MATERIALIZED VIEW mtmv_auto_bad_sql\n"
+                        + " BUILD DEFERRED REFRESH AUTO ON MANUAL\n"
+                        + " DISTRIBUTED BY RANDOM BUCKETS 2\n"
+                        + " PROPERTIES ('replication_num' = '1')\n"
+                        + " AS SELECT missing_col FROM missing_table;"));
+
+        Assertions.assertFalse(ex.getMessage().contains("fallback"),
+                "unexpected message: " + ex.getMessage());
+    }
+
+    @Test
     public void testCreateMTMVRewriteQuerySqlWithDefinedColumnsForScanPlan() throws Exception {
         createTable("create table test.mtmv_scan_base (id int, score int)\n"
                 + "duplicate key(id)\n"
