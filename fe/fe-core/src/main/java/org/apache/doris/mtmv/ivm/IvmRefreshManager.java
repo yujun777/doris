@@ -202,6 +202,10 @@ public class IvmRefreshManager {
         List<Command> commands;
         try {
             commands = analyzeDeltaCommands(context);
+        } catch (IvmException e) {
+            IvmRefreshResult result = IvmRefreshResult.fallback(e.getFallbackReason(), e.getMessage());
+            LOG.warn("IVM plan analysis failed for mv={}, result={}", mtmv.getName(), result, e);
+            return result;
         } catch (Exception e) {
             String detail = e.getMessage() != null ? e.getMessage()
                     : e.getClass().getName() + " (no message)";

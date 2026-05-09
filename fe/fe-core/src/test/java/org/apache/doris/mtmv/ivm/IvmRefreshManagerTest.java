@@ -118,6 +118,22 @@ public class IvmRefreshManagerTest {
     }
 
     @Test
+    public void testManagerReturnsIvmExceptionFallbackReasonWhenAnalyzeFails() {
+        MTMV mtmv = mockMtmv();
+        TestDeltaExecutor executor = new TestDeltaExecutor();
+        TestIvmRefreshManager manager = new TestIvmRefreshManager(executor,
+                newContext(mtmv), Collections.emptyList());
+        manager.throwIvmExceptionOnAnalyze = true;
+
+        IvmRefreshResult result = manager.doRefresh(mtmv);
+
+        Assertions.assertFalse(result.isSuccess());
+        Assertions.assertEquals(IvmFallbackReason.AGG_UNSUPPORTED, result.getFallbackReason());
+        Assertions.assertTrue(result.getDetailMessage().contains("unsupported aggregate"));
+        Assertions.assertFalse(executor.executeCalled);
+    }
+
+    @Test
     public void testManagerReturnsBinlogBrokenBeforeNereidsFlow() {
         MTMV mtmv = mockMtmv();
         IvmInfo ivmInfo = new IvmInfo();
@@ -388,6 +404,7 @@ public class IvmRefreshManagerTest {
         private final IvmRefreshContext context;
         private final List<Command> commands;
         private boolean throwOnBuild;
+        private boolean throwIvmExceptionOnAnalyze;
         private boolean useSuperPrecheck;
         /** Snapshots of runningIvmRefresh at each persistIvmInfo call. */
         private final List<Boolean> persistCalls = new ArrayList<>();
@@ -417,6 +434,9 @@ public class IvmRefreshManagerTest {
 
         @Override
         List<Command> analyzeDeltaCommands(IvmRefreshContext ctx) {
+            if (throwIvmExceptionOnAnalyze) {
+                throw new IvmException(IvmFallbackReason.AGG_UNSUPPORTED, "unsupported aggregate");
+            }
             return commands;
         }
 

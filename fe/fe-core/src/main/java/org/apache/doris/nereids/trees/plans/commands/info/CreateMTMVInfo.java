@@ -45,6 +45,7 @@ import org.apache.doris.mtmv.MTMVRefreshInfo;
 import org.apache.doris.mtmv.MTMVRelatedTableIf;
 import org.apache.doris.mtmv.MTMVRelation;
 import org.apache.doris.mtmv.MTMVUtil;
+import org.apache.doris.mtmv.ivm.IvmException;
 import org.apache.doris.mysql.privilege.PrivPredicate;
 import org.apache.doris.nereids.CascadesContext;
 import org.apache.doris.nereids.StatementContext;
@@ -213,7 +214,7 @@ public class CreateMTMVInfo extends CreateTableInfo {
             enableIvm = true;
             analyzeQuery(ctx);
             return true;
-        } catch (AnalysisException | UserException e) {
+        } catch (IvmException e) {
             LOG.info("AUTO refresh materialized view {} fallback to non-IVM: {}",
                     tableNameInfo.getTbl(), e.getMessage());
             origin.restore(this);
