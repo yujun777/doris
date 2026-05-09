@@ -670,7 +670,7 @@ public class IvmNormalizeMtmv extends DefaultPlanRewriter<Boolean> implements Cu
         if (isExcludedTriggerTable(table)) {
             return;
         }
-        if (!table.getBinlogConfig().isEnable()) {
+        if (!table.getBinlogConfig().getEnable()) {
             throw new IvmException(IvmFailureReason.BINLOG_NOT_ENABLED,
                     "SQL can be incrementally refreshed, but binlog is not enabled for table: "
                             + table.getName());
