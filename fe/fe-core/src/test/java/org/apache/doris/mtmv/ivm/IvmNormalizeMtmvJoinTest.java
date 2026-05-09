@@ -217,7 +217,7 @@ class IvmNormalizeMtmvJoinTest extends IvmDeltaTestBase {
         LogicalJoin<?, ?> join = new LogicalJoin<>(JoinType.LEFT_OUTER_JOIN,
                 ImmutableList.of(), scanA, scanB, JoinReorderContext.EMPTY);
 
-        assertIvmException(IvmFallbackReason.OUTER_JOIN_RETRACTION_UNSUPPORTED,
+        assertIvmException(IvmFailureReason.OUTER_JOIN_RETRACTION_UNSUPPORTED,
                 () -> normalizeJoinPlan(join));
     }
 
@@ -228,7 +228,7 @@ class IvmNormalizeMtmvJoinTest extends IvmDeltaTestBase {
         LogicalJoin<?, ?> join = new LogicalJoin<>(JoinType.RIGHT_OUTER_JOIN,
                 ImmutableList.of(), scanA, scanB, JoinReorderContext.EMPTY);
 
-        assertIvmException(IvmFallbackReason.OUTER_JOIN_RETRACTION_UNSUPPORTED,
+        assertIvmException(IvmFailureReason.OUTER_JOIN_RETRACTION_UNSUPPORTED,
                 () -> normalizeJoinPlan(join));
     }
 
@@ -257,13 +257,13 @@ class IvmNormalizeMtmvJoinTest extends IvmDeltaTestBase {
                 Optional.of(new MarkJoinSlotReference("$mark")),
                 scanA, scanB, JoinReorderContext.EMPTY);
 
-        assertIvmException(IvmFallbackReason.PLAN_PATTERN_UNSUPPORTED,
+        assertIvmException(IvmFailureReason.PLAN_PATTERN_UNSUPPORTED,
                 () -> normalizeJoinPlan(join));
     }
 
-    private void assertIvmException(IvmFallbackReason fallbackReason, Executable executable) {
+    private void assertIvmException(IvmFailureReason failureReason, Executable executable) {
         IvmException exception = Assertions.assertThrows(IvmException.class, executable);
-        Assertions.assertEquals(fallbackReason, exception.getFallbackReason());
+        Assertions.assertEquals(failureReason, exception.getFailureReason());
     }
 
     @Test

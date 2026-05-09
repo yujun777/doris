@@ -17,8 +17,8 @@
 
 package org.apache.doris.mtmv.ivm;
 
-/** Reasons an incremental refresh may fall back to partition or full refresh. */
-public enum IvmFallbackReason {
+/** Reasons IVM analysis or execution can fail. */
+public enum IvmFailureReason {
     BINLOG_BROKEN,
     STREAM_UNSUPPORTED,
     SNAPSHOT_ALIGNMENT_UNSUPPORTED,

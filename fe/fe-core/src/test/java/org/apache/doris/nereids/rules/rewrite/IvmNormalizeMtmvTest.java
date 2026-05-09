@@ -31,7 +31,7 @@ import org.apache.doris.mtmv.ivm.IvmAggMeta;
 import org.apache.doris.mtmv.ivm.IvmAggMeta.AggTarget;
 import org.apache.doris.mtmv.ivm.IvmAggMeta.AggType;
 import org.apache.doris.mtmv.ivm.IvmException;
-import org.apache.doris.mtmv.ivm.IvmFallbackReason;
+import org.apache.doris.mtmv.ivm.IvmFailureReason;
 import org.apache.doris.mtmv.ivm.IvmNormalizeResult;
 import org.apache.doris.mtmv.ivm.IvmUtil;
 import org.apache.doris.nereids.CascadesContext;
@@ -245,7 +245,7 @@ class IvmNormalizeMtmvTest {
         LogicalOlapScan morScan = new LogicalOlapScan(
                 PlanConstructor.getNextRelationId(), morTable, ImmutableList.of("db"));
 
-        assertIvmException(IvmFallbackReason.PLAN_PATTERN_UNSUPPORTED,
+        assertIvmException(IvmFailureReason.PLAN_PATTERN_UNSUPPORTED,
                 () -> new IvmNormalizeMtmv().rewriteRoot(morScan, newJobContextForScan(morScan, true)));
     }
 
@@ -255,7 +255,7 @@ class IvmNormalizeMtmvTest {
         LogicalOlapScan aggScan = new LogicalOlapScan(
                 PlanConstructor.getNextRelationId(), aggTable, ImmutableList.of("db"));
 
-        assertIvmException(IvmFallbackReason.PLAN_PATTERN_UNSUPPORTED,
+        assertIvmException(IvmFailureReason.PLAN_PATTERN_UNSUPPORTED,
                 () -> new IvmNormalizeMtmv().rewriteRoot(aggScan, newJobContextForScan(aggScan, true)));
     }
 
@@ -325,7 +325,7 @@ class IvmNormalizeMtmvTest {
     void testUnsupportedPlanNodeThrows() {
         LogicalSort<Plan> sort = new LogicalSort<>(ImmutableList.of(), scan);
 
-        assertIvmException(IvmFallbackReason.PLAN_PATTERN_UNSUPPORTED,
+        assertIvmException(IvmFailureReason.PLAN_PATTERN_UNSUPPORTED,
                 () -> new IvmNormalizeMtmv().rewriteRoot(sort, newJobContext(true)));
     }
 
@@ -335,7 +335,7 @@ class IvmNormalizeMtmvTest {
         LogicalSort<Plan> sort = new LogicalSort<>(ImmutableList.of(), scan);
         LogicalProject<?> project = new LogicalProject<>(ImmutableList.of(slot), sort);
 
-        assertIvmException(IvmFallbackReason.PLAN_PATTERN_UNSUPPORTED,
+        assertIvmException(IvmFailureReason.PLAN_PATTERN_UNSUPPORTED,
                 () -> new IvmNormalizeMtmv().rewriteRoot(project, newJobContext(true)));
     }
 
@@ -538,7 +538,7 @@ class IvmNormalizeMtmvTest {
         LogicalFilter<Plan> filter = new LogicalFilter<>(
                 ImmutableSet.of(BooleanLiteral.TRUE), agg);
 
-        assertIvmException(IvmFallbackReason.AGG_UNSUPPORTED,
+        assertIvmException(IvmFailureReason.AGG_UNSUPPORTED,
                 () -> new IvmNormalizeMtmv().rewriteRoot(filter, newJobContextForRoot(filter, true)));
     }
 
@@ -550,7 +550,7 @@ class IvmNormalizeMtmvTest {
         LogicalAggregate<Plan> agg = new LogicalAggregate<>(
                 ImmutableList.of(), outputs, true, java.util.Optional.empty(), scan);
 
-        assertIvmException(IvmFallbackReason.AGG_UNSUPPORTED,
+        assertIvmException(IvmFailureReason.AGG_UNSUPPORTED,
                 () -> new IvmNormalizeMtmv().rewriteRoot(agg, newJobContextForRoot(agg, true)));
     }
 
@@ -562,7 +562,7 @@ class IvmNormalizeMtmvTest {
         LogicalAggregate<Plan> agg = new LogicalAggregate<>(
                 ImmutableList.of(), outputs, true, java.util.Optional.empty(), scan);
 
-        assertIvmException(IvmFallbackReason.AGG_UNSUPPORTED,
+        assertIvmException(IvmFailureReason.AGG_UNSUPPORTED,
                 () -> new IvmNormalizeMtmv().rewriteRoot(agg, newJobContextForRoot(agg, true)));
     }
 
@@ -722,9 +722,9 @@ class IvmNormalizeMtmvTest {
         return newJobContextForScan(scan, enableIvmNormalRewrite);
     }
 
-    private void assertIvmException(IvmFallbackReason fallbackReason, Executable executable) {
+    private void assertIvmException(IvmFailureReason failureReason, Executable executable) {
         IvmException exception = Assertions.assertThrows(IvmException.class, executable);
-        Assertions.assertEquals(fallbackReason, exception.getFallbackReason());
+        Assertions.assertEquals(failureReason, exception.getFailureReason());
     }
 
     private JobContext newJobContextForScan(LogicalOlapScan rootScan, boolean enableIvmNormalRewrite) {

@@ -246,7 +246,7 @@ class IvmNormalizeMtmvUnionTest extends IvmDeltaTestBase {
                 childrenOutputs.build(), ImmutableList.of(), false,
                 ImmutableList.of(scanA, scanB));
 
-        assertIvmException(IvmFallbackReason.PLAN_PATTERN_UNSUPPORTED,
+        assertIvmException(IvmFailureReason.PLAN_PATTERN_UNSUPPORTED,
                 () -> normalizeUnionPlan(union));
     }
 
@@ -281,13 +281,13 @@ class IvmNormalizeMtmvUnionTest extends IvmDeltaTestBase {
                 childrenOutputs.build(), constantExprs, false,
                 ImmutableList.of(scanA, scanB));
 
-        assertIvmException(IvmFallbackReason.PLAN_PATTERN_UNSUPPORTED,
+        assertIvmException(IvmFailureReason.PLAN_PATTERN_UNSUPPORTED,
                 () -> normalizeUnionPlan(union));
     }
 
-    private void assertIvmException(IvmFallbackReason fallbackReason, Executable executable) {
+    private void assertIvmException(IvmFailureReason failureReason, Executable executable) {
         IvmException exception = Assertions.assertThrows(IvmException.class, executable);
-        Assertions.assertEquals(fallbackReason, exception.getFallbackReason());
+        Assertions.assertEquals(failureReason, exception.getFailureReason());
     }
 
     @Test
