@@ -48,8 +48,6 @@ import org.apache.doris.datasource.ExternalTable;
 import org.apache.doris.job.exception.JobException;
 import org.apache.doris.job.task.AbstractTask;
 import org.apache.doris.mtmv.MTMVPartitionInfo.MTMVPartitionType;
-import org.apache.doris.mtmv.ivm.IvmException;
-import org.apache.doris.mtmv.ivm.IvmFailureReason;
 import org.apache.doris.mtmv.ivm.IvmUtil;
 import org.apache.doris.nereids.NereidsPlanner;
 import org.apache.doris.nereids.StatementContext;
@@ -480,9 +478,6 @@ public class MTMVPlanUtil {
                 .filter(Column::isKey)
                 .map(Column::getName)
                 .collect(Collectors.toList());
-        if (isIvm) {
-            keys = Lists.newArrayList();
-        }
         List<StatementBase> statements;
         try {
             statements = new NereidsParser().parseSQL(querySql);
@@ -518,11 +513,6 @@ public class MTMVPlanUtil {
             List<SimpleColumnDefinition> simpleColumnDefinitions, Map<String, String> properties, List<String> keys,
             LogicalPlan logicalQuery, boolean isIvm, Set<TableNameInfo> excludedTriggerTables)
             throws UserException {
-        if (isIvm && !keys.isEmpty()) {
-            throw new IvmException(IvmFailureReason.PLAN_PATTERN_UNSUPPORTED,
-                    "Incremental materialized view does not allow specifying key columns. "
-                    + "The unique key is the hidden row-id column managed by IVM.");
-        }
         // Reuse the StatementContext already on the ConnectContext (set by NereidsParser during
         // SQL parsing or by the user session). Do NOT create a new StatementContext here — the
         // IVM refresh pipeline reads ExprId tracking from ctx.getStatementContext() after this

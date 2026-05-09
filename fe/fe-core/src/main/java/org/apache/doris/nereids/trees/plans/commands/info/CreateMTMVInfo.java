@@ -46,6 +46,7 @@ import org.apache.doris.mtmv.MTMVRelatedTableIf;
 import org.apache.doris.mtmv.MTMVRelation;
 import org.apache.doris.mtmv.MTMVUtil;
 import org.apache.doris.mtmv.ivm.IvmException;
+import org.apache.doris.mtmv.ivm.IvmFailureReason;
 import org.apache.doris.mysql.privilege.PrivPredicate;
 import org.apache.doris.nereids.CascadesContext;
 import org.apache.doris.nereids.StatementContext;
@@ -273,6 +274,7 @@ public class CreateMTMVInfo extends CreateTableInfo {
      * analyzeQuery
      */
     public void analyzeQuery(ConnectContext ctx) throws UserException {
+        checkUserSpecifiedKeysForIvm();
         MTMVAnalyzeQueryInfo mtmvAnalyzeQueryInfo = MTMVPlanUtil.analyzeQuery(ctx, this.mvProperties,
                 this.mvPartitionDefinition, this.distribution, this.simpleColumnDefinitions, this.properties, this.keys,
                 this.logicalQuery, isEnableIvm());
@@ -280,6 +282,14 @@ public class CreateMTMVInfo extends CreateTableInfo {
         this.columns = mtmvAnalyzeQueryInfo.getColumnDefinitions();
         this.relation = mtmvAnalyzeQueryInfo.getRelation();
         this.properties = mtmvAnalyzeQueryInfo.getProperties();
+    }
+
+    private void checkUserSpecifiedKeysForIvm() {
+        if (isEnableIvm() && !keys.isEmpty()) {
+            throw new IvmException(IvmFailureReason.PLAN_PATTERN_UNSUPPORTED,
+                    "Incremental materialized view does not allow specifying key columns. "
+                    + "The unique key is the hidden row-id column managed by IVM.");
+        }
     }
 
     private List<Column> getPartitionColumn(String partitionColumnName) {
