@@ -151,19 +151,12 @@ public class CreateMTMVInfo extends CreateTableInfo {
             throw new AnalysisException(message);
         }
         analyzeProperties();
-        boolean queryAnalyzed = false;
         if (isAutoRefresh()) {
-            queryAnalyzed = analyzeAutoRefreshQuery(ctx);
+            if (!analyzeAutoRefreshQuery(ctx)) {
+                analyzeQuery(ctx);
+            }
         } else {
             enableIvm = isExplicitIncremental();
-        }
-        // IVM MVs must not have user-specified keys — the unique key is the hidden row-id
-        if (isEnableIvm() && !keys.isEmpty()) {
-            throw new AnalysisException(
-                    "Incremental materialized view does not allow specifying key columns. "
-                    + "The unique key is the hidden row-id column managed by IVM.");
-        }
-        if (!queryAnalyzed) {
             analyzeQuery(ctx);
         }
         this.partitionDesc = generatePartitionDesc(ctx);
@@ -204,11 +197,6 @@ public class CreateMTMVInfo extends CreateTableInfo {
     }
 
     private boolean analyzeAutoRefreshQuery(ConnectContext ctx) throws UserException {
-        if (!keys.isEmpty()) {
-            enableIvm = false;
-            return false;
-        }
-
         AnalyzeQueryState origin = AnalyzeQueryState.capture(this);
         try {
             enableIvm = true;

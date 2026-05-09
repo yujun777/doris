@@ -27,6 +27,8 @@ import org.apache.doris.common.Config;
 import org.apache.doris.common.util.PropertyAnalyzer;
 import org.apache.doris.job.exception.JobException;
 import org.apache.doris.mtmv.MTMVPartitionInfo.MTMVPartitionType;
+import org.apache.doris.mtmv.ivm.IvmException;
+import org.apache.doris.mtmv.ivm.IvmFailureReason;
 import org.apache.doris.nereids.exceptions.AnalysisException;
 import org.apache.doris.nereids.glue.LogicalPlanAdapter;
 import org.apache.doris.nereids.parser.NereidsParser;
@@ -408,6 +410,25 @@ public class MTMVPlanUtilTest extends SqlTestBase {
     }
 
     @Test
+    public void testAnalyzeQueryIvmRejectsUserSpecifiedKeys() throws Exception {
+        String querySql = "select id from test.T4";
+        MTMVPartitionDefinition mtmvPartitionDefinition = new MTMVPartitionDefinition();
+        mtmvPartitionDefinition.setPartitionType(MTMVPartitionType.SELF_MANAGE);
+        DistributionDescriptor distributionDescriptor = new DistributionDescriptor(false, true, 10,
+                Lists.newArrayList("id"));
+        StatementBase parsedStmt = new NereidsParser().parseSQL(querySql).get(0);
+        LogicalPlan logicalPlan = ((LogicalPlanAdapter) parsedStmt).getLogicalPlan();
+
+        IvmException exception = Assertions.assertThrows(IvmException.class,
+                () -> MTMVPlanUtil.analyzeQuery(connectContext, Maps.newHashMap(),
+                        mtmvPartitionDefinition, distributionDescriptor, null, Maps.newHashMap(),
+                        Lists.newArrayList("id"), logicalPlan, true));
+        Assertions.assertEquals(IvmFailureReason.PLAN_PATTERN_UNSUPPORTED, exception.getFailureReason());
+        Assertions.assertTrue(exception.getMessage().contains("does not allow specifying key columns"),
+                "unexpected message: " + exception.getMessage());
+    }
+
+    @Test
     public void testAnalyzeQueryWithSqlDoesNotMutateMtmvProperties() throws Exception {
         createMvByNereids("create materialized view mv_ivm_analyze_query_props "
                 + "BUILD DEFERRED REFRESH INCREMENTAL ON MANUAL\n"
@@ -448,7 +469,7 @@ public class MTMVPlanUtilTest extends SqlTestBase {
                 MTMVPlanUtil.DISABLE_RULES_WHEN_GENERATE_MTMV_CACHE);
         autoCtx.setSessionVariable(autoSessionVariable);
         Assertions.assertDoesNotThrow(() -> MTMVPlanUtil.ensureMTMVQueryUsable(autoMtmv, autoCtx));
-        Assertions.assertEquals(0, autoSessionVariable.getEnableIvmRewriteSetCount());
+        Assertions.assertEquals(1, autoSessionVariable.getEnableIvmRewriteSetCount());
 
         CountingSessionVariable incrementalSessionVariable = new CountingSessionVariable();
         ConnectContext incrementalCtx = MTMVPlanUtil.createMTMVContext(incrementalMtmv,

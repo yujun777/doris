@@ -21,16 +21,16 @@ import org.apache.doris.nereids.exceptions.AnalysisException;
 
 import java.util.Objects;
 
-/** Exception for known IVM analysis failures that can be mapped to a fallback reason. */
+/** Exception for known IVM analysis failures that can be mapped to a failure reason. */
 public class IvmException extends AnalysisException {
-    private final IvmFallbackReason fallbackReason;
+    private final IvmFailureReason failureReason;
 
-    public IvmException(IvmFallbackReason fallbackReason, String message) {
+    public IvmException(IvmFailureReason failureReason, String message) {
         super(message);
-        this.fallbackReason = Objects.requireNonNull(fallbackReason, "fallbackReason can not be null");
+        this.failureReason = Objects.requireNonNull(failureReason, "failureReason can not be null");
     }
 
-    public IvmFallbackReason getFallbackReason() {
-        return fallbackReason;
+    public IvmFailureReason getFailureReason() {
+        return failureReason;
     }
 }
