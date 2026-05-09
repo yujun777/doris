@@ -318,7 +318,7 @@ public class CreateMTMVCommandTest extends TestWithFeService {
         createTable("create table test.mtmv_auto_increment_flag_base (k1 int)\n"
                 + "duplicate key(k1)\n"
                 + "distributed by hash(k1) buckets 1\n"
-                + "properties('replication_num' = '1');");
+                + "properties('replication_num' = '1', 'binlog.enable' = 'true');");
         createMtmv("CREATE MATERIALIZED VIEW mtmv_auto_increment_flag\n"
                 + " BUILD DEFERRED REFRESH AUTO ON MANUAL\n"
                 + " DISTRIBUTED BY RANDOM BUCKETS 2\n"
