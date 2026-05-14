@@ -28,6 +28,7 @@ import org.apache.doris.mtmv.MTMVPartitionUtil;
 import org.apache.doris.mtmv.ivm.IvmException;
 import org.apache.doris.mtmv.ivm.IvmFailureReason;
 import org.apache.doris.mtmv.ivm.IvmNormalizeResult;
+import org.apache.doris.mtmv.ivm.IvmPlanSignatureGenerator;
 import org.apache.doris.mtmv.ivm.IvmUtil;
 import org.apache.doris.mtmv.ivm.agg.IvmAggFunctionRegistry;
 import org.apache.doris.mtmv.ivm.agg.IvmAggMeta;
@@ -201,6 +202,7 @@ public class IvmNormalizeMtmv extends DefaultPlanRewriter<IvmNormalizeMtmv.Norma
         jobContext.getCascadesContext().setIvmNormalizeResult(normalizeResult);
         Plan result = plan.accept(this, NormalizeContext.ROOT);
         normalizeResult.setNormalizedPlan(result);
+        normalizeResult.setPlanSignature(new IvmPlanSignatureGenerator().generate(normalizeResult));
         return result;
     }
 

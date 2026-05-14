@@ -58,6 +58,7 @@ import org.apache.doris.mtmv.MTMVRefreshPartitionSnapshot;
 import org.apache.doris.mtmv.MTMVRelatedTableIf;
 import org.apache.doris.mtmv.MTMVRelation;
 import org.apache.doris.mtmv.MTMVUtil;
+import org.apache.doris.mtmv.ivm.IvmFailureReason;
 import org.apache.doris.mtmv.ivm.IvmRefreshManager;
 import org.apache.doris.mtmv.ivm.IvmRefreshResult;
 import org.apache.doris.nereids.StatementContext;
@@ -160,6 +161,9 @@ public class MTMVTask extends AbstractTask {
     private String ivmFallbackReason;
     @SerializedName("cg")
     private String computeGroup;
+    // Temporarily keeps the compact current layout signature hash from the failed IVM probe.
+    // After the fallback full refresh succeeds, this hash becomes the next incremental baseline.
+    private String ivmFallbackPlanSignature;
 
     private MTMV mtmv;
     private MTMVRelation relation;
@@ -283,6 +287,7 @@ public class MTMVTask extends AbstractTask {
             return false;
         }
         IvmRefreshManager ivmRefreshManager = new IvmRefreshManager();
+        ivmFallbackPlanSignature = null;
         IvmRefreshResult ivmResult = ivmRefreshManager.doRefresh(mtmv);
         if (ivmResult.isSuccess()) {
             LOG.info("IVM incremental refresh succeeded for mv={}, taskId={}",
@@ -290,6 +295,11 @@ public class MTMVTask extends AbstractTask {
             return true;
         }
         ivmFallbackReason = ivmResult.getFailureReason().name();
+        if (ivmResult.getFailureReason() == IvmFailureReason.PLAN_SIGNATURE_MISMATCH) {
+            ivmFallbackPlanSignature = ivmResult.getCurrentPlanSignature() == null
+                    ? null
+                    : ivmResult.getCurrentPlanSignature().getSha256();
+        }
         // INCREMENTAL was explicitly requested; do not fall back to full refresh.
         if (currentRefreshMode == RefreshMode.INCREMENTAL) {
             throw new JobException(
@@ -301,6 +311,11 @@ public class MTMVTask extends AbstractTask {
                 + "Continuing with partition-based refresh.",
                 mtmv.getName(), ivmResult.getFailureReason(),
                 ivmResult.getDetailMessage(), getTaskId());
+        // The earlier partition calculation belongs to the ordinary MTMV refresh path
+        // and may have produced NOT_REFRESH or PARTIAL. Once AUTO IVM falls back, rebuild
+        // the whole MV so recovery state and layout signature baseline can be reset safely.
+        this.needRefreshPartitions = Lists.newArrayList(mtmv.getPartitionNames());
+        this.refreshMode = generateRefreshMode(needRefreshPartitions);
         return false;
     }
 
@@ -342,6 +357,7 @@ public class MTMVTask extends AbstractTask {
             partitionSnapshots.putAll(execPartitionSnapshots);
         }
         if (mtmv.isIvm()) {
+            updateIvmPlanSignatureAfterFullRefreshIfNeeded();
             if (ivmPreRefreshTsos != null && !ivmPreRefreshTsos.isEmpty()) {
                 IvmRefreshManager.resetIvmStateAfterFullRefresh(mtmv, ivmPreRefreshTsos);
             }
@@ -354,6 +370,14 @@ public class MTMVTask extends AbstractTask {
         }
         LOG.info("MTMVTask refresh used snapshot: {}, mvDbName: {}, mvName: {}, taskId: {}", partitionSnapshots,
                 mtmv.getDatabase().getFullName(), mtmv.getName(), getTaskId());
+    }
+
+    private void updateIvmPlanSignatureAfterFullRefreshIfNeeded() throws JobException {
+        if (ivmFallbackPlanSignature == null) {
+            return;
+        }
+        IvmRefreshManager.updatePlanSignatureAfterFullRefresh(mtmv, ivmFallbackPlanSignature);
+        ivmFallbackPlanSignature = null;
     }
 
     private void executeWithRetry(Set<String> execPartitionNames, Map<TableIf, String> tableWithPartKey)

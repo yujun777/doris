@@ -1,0 +1,237 @@
+// Licensed to the Apache Software Foundation (ASF) under one
+// or more contributor license agreements.  See the NOTICE file
+// distributed with this work for additional information
+// regarding copyright ownership.  The ASF licenses this file
+// to you under the Apache License, Version 2.0 (the
+// "License"); you may not use this file except in compliance
+// with the License.  You may obtain a copy of the License at
+//
+//   http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing,
+// software distributed under the License is distributed on an
+// "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+// KIND, either express or implied.  See the License for the
+// specific language governing permissions and limitations
+// under the License.
+
+package org.apache.doris.mtmv.ivm;
+
+import org.apache.doris.catalog.Column;
+import org.apache.doris.catalog.KeysType;
+import org.apache.doris.catalog.OlapTable;
+import org.apache.doris.nereids.jobs.JobContext;
+import org.apache.doris.nereids.rules.exploration.join.JoinReorderContext;
+import org.apache.doris.nereids.rules.rewrite.IvmNormalizeMtmv;
+import org.apache.doris.nereids.trees.expressions.Alias;
+import org.apache.doris.nereids.trees.expressions.EqualTo;
+import org.apache.doris.nereids.trees.expressions.LessThan;
+import org.apache.doris.nereids.trees.expressions.NamedExpression;
+import org.apache.doris.nereids.trees.expressions.Slot;
+import org.apache.doris.nereids.trees.expressions.SlotReference;
+import org.apache.doris.nereids.trees.expressions.StatementScopeIdGenerator;
+import org.apache.doris.nereids.trees.expressions.literal.IntegerLiteral;
+import org.apache.doris.nereids.trees.plans.JoinType;
+import org.apache.doris.nereids.trees.plans.Plan;
+import org.apache.doris.nereids.trees.plans.algebra.SetOperation.Qualifier;
+import org.apache.doris.nereids.trees.plans.logical.LogicalFilter;
+import org.apache.doris.nereids.trees.plans.logical.LogicalJoin;
+import org.apache.doris.nereids.trees.plans.logical.LogicalOlapScan;
+import org.apache.doris.nereids.trees.plans.logical.LogicalProject;
+import org.apache.doris.nereids.trees.plans.logical.LogicalResultSink;
+import org.apache.doris.nereids.trees.plans.logical.LogicalUnion;
+import org.apache.doris.nereids.util.PlanConstructor;
+import org.apache.doris.qe.ConnectContext;
+
+import com.google.common.collect.ImmutableList;
+import com.google.common.collect.ImmutableSet;
+import org.junit.jupiter.api.Assertions;
+import org.junit.jupiter.api.Test;
+
+import java.util.List;
+
+class IvmPlanSignatureGeneratorTest extends IvmDeltaTestBase {
+
+    @Test
+    void testSamePlanSignatureStableAcrossNormalizeRuns() {
+        IvmPlanSignature signature1 = signatureForPlan(buildScanRoot(buildMowScan(1, "t")));
+        IvmPlanSignature signature2 = signatureForPlan(buildScanRoot(buildMowScan(1, "t")));
+
+        Assertions.assertEquals(signature1.getSha256(), signature2.getSha256());
+        Assertions.assertFalse(signature1.getCanonicalString().contains("#"),
+                "canonical string should not contain ExprId text");
+        Assertions.assertFalse(signature1.getCanonicalString().contains("LogicalProject["),
+                "canonical string should not contain debug plan id text");
+    }
+
+    @Test
+    void testFilterDoesNotChangeSignature() {
+        LogicalOlapScan scan1 = buildMowScan(1, "t");
+        IvmPlanSignature withoutFilter = signatureForPlan(buildScanRoot(scan1));
+
+        LogicalOlapScan scan2 = buildMowScan(1, "t");
+        LogicalFilter<LogicalOlapScan> filter = new LogicalFilter<>(
+                ImmutableSet.of(new LessThan(new IntegerLiteral(0), scan2.getOutput().get(0))), scan2);
+        IvmPlanSignature withFilter = signatureForPlan(buildScanRoot(filter));
+
+        Assertions.assertEquals(withoutFilter.getSha256(), withFilter.getSha256());
+    }
+
+    @Test
+    void testAliasNameDoesNotChangeExpressionSignature() {
+        LogicalOlapScan scan = buildMowScan(1, "t");
+        Slot slot = scan.getOutput().get(0);
+        IvmPlanSignatureGenerator generator = new IvmPlanSignatureGenerator();
+
+        String aliasA = generator.canonicalExpression(new Alias(slot, "alias_a"));
+        String aliasB = generator.canonicalExpression(new Alias(slot, "alias_b"));
+
+        Assertions.assertEquals(aliasA, aliasB);
+        Assertions.assertFalse(aliasA.contains("alias_a"));
+        Assertions.assertFalse(aliasB.contains("alias_b"));
+    }
+
+    @Test
+    void testInnerJoinChildOrderChangesSignature() {
+        LogicalOlapScan scanA = buildMowScan(1, "a");
+        LogicalOlapScan scanB = buildMowScan(2, "b");
+        LogicalJoin<?, ?> joinAB = new LogicalJoin<>(JoinType.INNER_JOIN,
+                ImmutableList.of(), scanA, scanB, JoinReorderContext.EMPTY);
+
+        LogicalOlapScan scanA2 = buildMowScan(1, "a");
+        LogicalOlapScan scanB2 = buildMowScan(2, "b");
+        LogicalJoin<?, ?> joinBA = new LogicalJoin<>(JoinType.INNER_JOIN,
+                ImmutableList.of(), scanB2, scanA2, JoinReorderContext.EMPTY);
+
+        Assertions.assertNotEquals(
+                signatureForPlan(buildScanRoot(joinAB)).getSha256(),
+                signatureForPlan(buildScanRoot(joinBA)).getSha256());
+    }
+
+    @Test
+    void testInnerJoinPredicateDoesNotChangeSignature() {
+        LogicalOlapScan scanA1 = buildMowScan(1, "a");
+        LogicalOlapScan scanB1 = buildMowScan(2, "b");
+        LogicalJoin<?, ?> idJoin = new LogicalJoin<>(JoinType.INNER_JOIN,
+                ImmutableList.of(new EqualTo(scanA1.getOutput().get(0), scanB1.getOutput().get(0))),
+                scanA1, scanB1, JoinReorderContext.EMPTY);
+
+        LogicalOlapScan scanA2 = buildMowScan(1, "a");
+        LogicalOlapScan scanB2 = buildMowScan(2, "b");
+        LogicalJoin<?, ?> nameJoin = new LogicalJoin<>(JoinType.INNER_JOIN,
+                ImmutableList.of(new EqualTo(scanA2.getOutput().get(1), scanB2.getOutput().get(1))),
+                scanA2, scanB2, JoinReorderContext.EMPTY);
+
+        IvmPlanSignature idSignature = signatureForPlan(buildScanRoot(idJoin));
+        IvmPlanSignature nameSignature = signatureForPlan(buildScanRoot(nameJoin));
+
+        Assertions.assertFalse(idSignature.getCanonicalString().contains("hashConjuncts"));
+        Assertions.assertEquals(idSignature.getSha256(), nameSignature.getSha256());
+    }
+
+    @Test
+    void testUnionArmOrderChangesSignature() {
+        LogicalUnion unionAB = buildUnionAll(buildMowScan(1, "a"), buildMowScan(2, "b"));
+        LogicalUnion unionBA = buildUnionAll(buildMowScan(2, "b"), buildMowScan(1, "a"));
+
+        Assertions.assertNotEquals(
+                signatureForPlan(buildScanRoot(unionAB)).getSha256(),
+                signatureForPlan(buildScanRoot(unionBA)).getSha256());
+    }
+
+    @Test
+    void testAggregateSignatureContainsHiddenState() {
+        PlanBundle bundle = normalizeAggPlan(buildGroupedAgg(buildMowScan(1, "t")));
+        IvmPlanSignature signature = bundle.normalizeResult.getPlanSignature();
+
+        Assertions.assertTrue(signature.getCanonicalString().contains("AGG_META"));
+        Assertions.assertTrue(signature.getCanonicalString().contains(Column.IVM_AGG_COUNT_COL));
+        Assertions.assertTrue(signature.getCanonicalString().contains("aggType=AVG"));
+    }
+
+    @Test
+    void testOuterJoinRepairModeDoesNotChangeSignature() {
+        LogicalOlapScan left1 = buildMowScan(1, "l");
+        LogicalOlapScan right1 = buildMowScan(2, "r");
+        LogicalJoin<?, ?> equiJoin = new LogicalJoin<>(JoinType.LEFT_OUTER_JOIN,
+                ImmutableList.of(new EqualTo(left1.getOutput().get(0), right1.getOutput().get(0))),
+                left1, right1, JoinReorderContext.EMPTY);
+
+        LogicalOlapScan left2 = buildMowScan(1, "l");
+        LogicalOlapScan right2 = buildMowScan(2, "r");
+        LogicalJoin<?, ?> nonEquiJoin = new LogicalJoin<>(JoinType.LEFT_OUTER_JOIN,
+                ImmutableList.of(), ImmutableList.of(new LessThan(right2.getOutput().get(0),
+                        left2.getOutput().get(0))), left2, right2, JoinReorderContext.EMPTY);
+
+        IvmPlanSignature rightEvents = signatureForPlan(buildScanRoot(equiJoin));
+        IvmPlanSignature repairBranches = signatureForPlan(buildScanRoot(nonEquiJoin));
+
+        Assertions.assertFalse(rightEvents.getCanonicalString().contains("repairMode"));
+        Assertions.assertFalse(repairBranches.getCanonicalString().contains("repairMode"));
+        Assertions.assertEquals(rightEvents.getSha256(), repairBranches.getSha256());
+    }
+
+    @Test
+    void testOuterJoinRepairBranchPredicateDoesNotChangeSignature() {
+        LogicalOlapScan left1 = buildMowScan(1, "l");
+        LogicalOlapScan right1 = buildMowScan(2, "r");
+        LogicalJoin<?, ?> lessThanIdJoin = new LogicalJoin<>(JoinType.LEFT_OUTER_JOIN,
+                ImmutableList.of(), ImmutableList.of(new LessThan(right1.getOutput().get(0),
+                        left1.getOutput().get(0))), left1, right1, JoinReorderContext.EMPTY);
+
+        LogicalOlapScan left2 = buildMowScan(1, "l");
+        LogicalOlapScan right2 = buildMowScan(2, "r");
+        LogicalJoin<?, ?> lessThanNameJoin = new LogicalJoin<>(JoinType.LEFT_OUTER_JOIN,
+                ImmutableList.of(), ImmutableList.of(new LessThan(right2.getOutput().get(1),
+                        left2.getOutput().get(1))), left2, right2, JoinReorderContext.EMPTY);
+
+        IvmPlanSignature idSignature = signatureForPlan(buildScanRoot(lessThanIdJoin));
+        IvmPlanSignature nameSignature = signatureForPlan(buildScanRoot(lessThanNameJoin));
+
+        Assertions.assertFalse(idSignature.getCanonicalString().contains("repairMode"));
+        Assertions.assertFalse(idSignature.getCanonicalString().contains("otherConjuncts"));
+        Assertions.assertEquals(idSignature.getSha256(), nameSignature.getSha256());
+    }
+
+    private IvmPlanSignature signatureForPlan(Plan root) {
+        ConnectContext ctx = newConnectContext();
+        JobContext jobContext = newJobContextForRoot(root, ctx);
+        new IvmNormalizeMtmv().rewriteRoot(root, jobContext);
+        IvmNormalizeResult normalizeResult = jobContext.getCascadesContext().getIvmNormalizeResult().get();
+        return normalizeResult.getPlanSignature();
+    }
+
+    private LogicalResultSink<?> buildScanRoot(Plan plan) {
+        ImmutableList<NamedExpression> exprs = ImmutableList.copyOf(plan.getOutput());
+        LogicalProject<?> project = new LogicalProject<>(exprs, plan);
+        return new LogicalResultSink<>(exprs, project);
+    }
+
+    private LogicalOlapScan buildMowScan(long tableId, String name) {
+        OlapTable table = PlanConstructor.newOlapTable(tableId, name, 0, KeysType.UNIQUE_KEYS);
+        table.setEnableUniqueKeyMergeOnWrite(true);
+        enableRowBinlog(table);
+        table.setQualifiedDbName("test_db");
+        return new LogicalOlapScan(PlanConstructor.getNextRelationId(), table,
+                ImmutableList.of("test_db"));
+    }
+
+    private LogicalUnion buildUnionAll(Plan... children) {
+        List<Slot> firstOutput = children[0].getOutput();
+        ImmutableList.Builder<NamedExpression> outputs = ImmutableList.builder();
+        for (Slot slot : firstOutput) {
+            outputs.add(new SlotReference(StatementScopeIdGenerator.newExprId(),
+                    slot.getName(), slot.getDataType(), slot.nullable(), ImmutableList.of()));
+        }
+        ImmutableList.Builder<List<SlotReference>> childrenOutputs = ImmutableList.builder();
+        for (Plan child : children) {
+            ImmutableList.Builder<SlotReference> childMapping = ImmutableList.builder();
+            for (Slot slot : child.getOutput()) {
+                childMapping.add((SlotReference) slot);
+            }
+            childrenOutputs.add(childMapping.build());
+        }
+        return new LogicalUnion(Qualifier.ALL, outputs.build(), childrenOutputs.build(),
+                ImmutableList.of(), false, ImmutableList.copyOf(children));
+    }
+}

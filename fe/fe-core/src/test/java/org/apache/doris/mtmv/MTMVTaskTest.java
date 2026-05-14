@@ -32,6 +32,8 @@ import org.apache.doris.job.extensions.mtmv.MTMVTaskContext;
 import org.apache.doris.mtmv.MTMVPartitionInfo.MTMVPartitionType;
 import org.apache.doris.mtmv.MTMVRefreshEnum.RefreshMethod;
 import org.apache.doris.mtmv.ivm.IvmFailureReason;
+import org.apache.doris.mtmv.ivm.IvmInfo;
+import org.apache.doris.mtmv.ivm.IvmPlanSignature;
 import org.apache.doris.mtmv.ivm.IvmRefreshManager;
 import org.apache.doris.mtmv.ivm.IvmRefreshResult;
 import org.apache.doris.nereids.StatementContext;
@@ -321,6 +323,49 @@ public class MTMVTaskTest {
 
         Assert.assertEquals(IvmFailureReason.BINLOG_NOT_ENABLED.name(),
                 Deencapsulation.getField(task, "ivmFallbackReason"));
+    }
+
+    @Test
+    public void testTryIvmFastPathFallsBackForPlanSignatureMismatchInAutoMode() throws Exception {
+        Mockito.when(mtmv.isIvm()).thenReturn(true);
+        Mockito.when(mtmv.getName()).thenReturn("test_mv");
+        Mockito.when(mtmv.getPartitionNames()).thenReturn(Sets.newHashSet(poneName, ptwoName));
+        IvmPlanSignature currentSignature = new IvmPlanSignature("canonical", "new");
+        MTMVTask task = new MTMVTask(mtmv, relation, new MTMVTaskContext(MTMVTaskTriggerMode.MANUAL));
+
+        try (MockedConstruction<IvmRefreshManager> ignored = Mockito.mockConstruction(IvmRefreshManager.class,
+                (mock, context) -> Mockito.when(mock.doRefresh(mtmv)).thenReturn(
+                        IvmRefreshResult.fallback(IvmFailureReason.PLAN_SIGNATURE_MISMATCH,
+                                "layout drift", currentSignature)))) {
+            Assert.assertFalse(Deencapsulation.invoke(task, "tryIvmFastPath"));
+        }
+
+        Assert.assertEquals(IvmFailureReason.PLAN_SIGNATURE_MISMATCH.name(),
+                Deencapsulation.getField(task, "ivmFallbackReason"));
+        Assert.assertEquals("new", Deencapsulation.getField(task, "ivmFallbackPlanSignature"));
+        List<String> needRefreshPartitions = Deencapsulation.getField(task, "needRefreshPartitions");
+        Assert.assertEquals(mtmv.getPartitionNames(), Sets.newHashSet(needRefreshPartitions));
+        Assert.assertEquals(MTMVTask.MTMVTaskRefreshMode.COMPLETE,
+                Deencapsulation.getField(task, "refreshMode"));
+    }
+
+    @Test
+    public void testFullRefreshUpdatesIvmPlanSignatureFromFallbackResult() throws Exception {
+        IvmInfo ivmInfo = new IvmInfo();
+        ivmInfo.setPlanSignature("old");
+        Mockito.when(mtmv.getIvmInfo()).thenReturn(ivmInfo);
+        Mockito.when(mtmv.getQualifiedDbName()).thenReturn("test_db");
+        Mockito.when(mtmv.getName()).thenReturn("test_mv");
+        MTMVTask task = new MTMVTask(mtmv, relation, new MTMVTaskContext(MTMVTaskTriggerMode.MANUAL));
+        Deencapsulation.setField(task, "ivmFallbackPlanSignature", "new");
+
+        try (MockedStatic<IvmRefreshManager> managerStatic = Mockito.mockStatic(IvmRefreshManager.class)) {
+            Deencapsulation.invoke(task, "updateIvmPlanSignatureAfterFullRefreshIfNeeded");
+
+            managerStatic.verify(() -> IvmRefreshManager.updatePlanSignatureAfterFullRefresh(
+                    mtmv, "new"));
+        }
+        Assert.assertNull(Deencapsulation.getField(task, "ivmFallbackPlanSignature"));
     }
 
     @Test

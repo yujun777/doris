@@ -92,6 +92,7 @@ public class CreateMTMVInfo extends CreateTableInfo {
     private MTMVPartitionInfo mvPartitionInfo;
     private final Map<String, String> sessionVariables;
     private boolean enableIvm;
+    private String ivmPlanSignature;
 
     /**
      * constructor for create MTMV
@@ -289,6 +290,9 @@ public class CreateMTMVInfo extends CreateTableInfo {
         this.columns = mtmvAnalyzeQueryInfo.getColumnDefinitions();
         this.relation = mtmvAnalyzeQueryInfo.getRelation();
         this.properties = mtmvAnalyzeQueryInfo.getProperties();
+        this.ivmPlanSignature = isEnableIvm()
+                ? mtmvAnalyzeQueryInfo.getIvmNormalizeResult().getPlanSignature().getSha256()
+                : null;
     }
 
     private void checkUserSpecifiedKeysForIvm() {
@@ -434,6 +438,10 @@ public class CreateMTMVInfo extends CreateTableInfo {
         return mvPartitionInfo;
     }
 
+    public String getIvmPlanSignature() {
+        return ivmPlanSignature;
+    }
+
     public Map<String, String> getSessionVariables() {
         return sessionVariables;
     }
@@ -449,6 +457,7 @@ public class CreateMTMVInfo extends CreateTableInfo {
         private final MTMVPartitionType mvPartitionType;
         private final Expression mvPartitionExpression;
         private final boolean enableIvm;
+        private final String ivmPlanSignature;
 
         private AnalyzeQueryState(CreateMTMVInfo info) {
             this.properties = info.properties == null ? null : Maps.newHashMap(info.properties);
@@ -461,6 +470,7 @@ public class CreateMTMVInfo extends CreateTableInfo {
             this.mvPartitionType = info.mvPartitionDefinition.getPartitionType();
             this.mvPartitionExpression = info.mvPartitionDefinition.getFunctionCallExpression();
             this.enableIvm = info.enableIvm;
+            this.ivmPlanSignature = info.ivmPlanSignature;
         }
 
         private static AnalyzeQueryState capture(CreateMTMVInfo info) {
@@ -478,6 +488,7 @@ public class CreateMTMVInfo extends CreateTableInfo {
             info.mvPartitionDefinition.setPartitionType(mvPartitionType);
             info.mvPartitionDefinition.setFunctionCallExpression(mvPartitionExpression);
             info.enableIvm = enableIvm;
+            info.ivmPlanSignature = ivmPlanSignature;
         }
     }
 }

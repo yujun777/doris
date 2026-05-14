@@ -42,6 +42,10 @@ public class IvmInfo {
     @SerializedName("bs")
     private Map<BaseTableInfo, IvmStreamRef> baseTableStreams;
 
+    /** Compact persisted SHA-256 layout signature; see IvmPlanSignature#canonicalString for details. */
+    @SerializedName("ps")
+    private String planSignature;
+
     public IvmInfo() {
         this.baseTableStreams = Maps.newHashMap();
     }
@@ -78,6 +82,14 @@ public class IvmInfo {
         this.baseTableStreams = baseTableStreams;
     }
 
+    public String getPlanSignature() {
+        return planSignature;
+    }
+
+    public void setPlanSignature(String planSignature) {
+        this.planSignature = planSignature;
+    }
+
     @Override
     public String toString() {
         return "IvmInfo{"
@@ -85,6 +97,7 @@ public class IvmInfo {
                 + ", binlogBroken=" + binlogBroken
                 + ", runningIvmRefresh=" + runningIvmRefresh
                 + ", baseTableStreams=" + baseTableStreams
+                + ", planSignature='" + planSignature + '\''
                 + '}';
     }
 }
