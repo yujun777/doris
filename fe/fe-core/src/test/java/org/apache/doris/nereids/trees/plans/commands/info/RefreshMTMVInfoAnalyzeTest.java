@@ -128,10 +128,15 @@ public class RefreshMTMVInfoAnalyzeTest {
     }
 
     private RefreshMTMVInfo createInfoWithPartitions(RefreshMode mode) {
+        return createInfoWithPartitions(mode, RefreshMTMVInfo.defaultAllowFallback(mode));
+    }
+
+    private RefreshMTMVInfo createInfoWithPartitions(RefreshMode mode, boolean allowFallback) {
         return new RefreshMTMVInfo(
                 new TableNameInfo(ImmutableList.of("internal", "db1", "mv1")),
                 Lists.newArrayList("p1", "p2"),
-                mode);
+                mode,
+                allowFallback);
     }
 
     // TC-8-5: MV without IVM capability executing REFRESH ... INCREMENTAL should error
@@ -143,13 +148,36 @@ public class RefreshMTMVInfoAnalyzeTest {
         Assertions.assertTrue(exception.getMessage().contains("INCREMENTAL"));
     }
 
-    // TC-8-6: MV without IVM capability executing REFRESH ... PARTITIONS should error
+    // TC-8-6: PARTITIONS is a partition-refresh mode and does not require IVM capability
     @Test
-    public void testRefreshPartitionsOnNonIvmMVRejected() throws Exception {
+    public void testRefreshPartitionsOnNonIvmMVAllowed() throws Exception {
         setupMvLookup(noIvmMtmv);
         RefreshMTMVInfo info = createInfo(RefreshMode.PARTITIONS);
+        info.analyze(ctx);
+    }
+
+    @Test
+    public void testRefreshIncrementalFallbackOnNonIvmMVAllowed() throws Exception {
+        setupMvLookup(noIvmMtmv);
+        RefreshMTMVInfo info = new RefreshMTMVInfo(
+                new TableNameInfo(ImmutableList.of("internal", "db1", "mv1")),
+                ImmutableList.of(),
+                RefreshMode.INCREMENTAL,
+                true);
+        info.analyze(ctx);
+    }
+
+    @Test
+    public void testRefreshCompleteFallbackRejected() throws Exception {
+        setupMvLookup(noIvmMtmv);
+        RefreshMTMVInfo info = new RefreshMTMVInfo(
+                new TableNameInfo(ImmutableList.of("internal", "db1", "mv1")),
+                ImmutableList.of(),
+                RefreshMode.COMPLETE,
+                true);
         AnalysisException exception = analyzeAndGetException(info);
-        Assertions.assertTrue(exception.getMessage().contains("PARTITIONS"));
+        Assertions.assertTrue(exception.getMessage().contains("COMPLETE"));
+        Assertions.assertTrue(exception.getMessage().contains("FALLBACK"));
     }
 
     // TC-8-7: IVM-capable MV executing REFRESH ... COMPLETE should succeed
@@ -164,10 +192,10 @@ public class RefreshMTMVInfoAnalyzeTest {
     @Test
     public void testPartitionSpecOnIvmMVRejected() throws Exception {
         setupMvLookup(ivmCapableMtmv);
-        RefreshMTMVInfo info = createInfoWithPartitions(RefreshMode.AUTO);
+        RefreshMTMVInfo info = createInfoWithPartitions(RefreshMode.AUTO, false);
         AnalysisException exception = analyzeAndGetException(info);
         Assertions.assertTrue(exception.getMessage().contains("partitionSpec"));
-        Assertions.assertTrue(exception.getMessage().contains("INCREMENTAL"));
+        Assertions.assertTrue(exception.getMessage().contains("PARTITIONS"));
     }
 
     // IVM-capable MV with REFRESH ... AUTO should succeed

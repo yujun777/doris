@@ -64,11 +64,18 @@ public class RefreshMTMVInfo {
     private final TableNameInfo mvName;
     private List<String> partitions;
     private RefreshMode refreshMode;
+    private boolean allowFallback;
 
     public RefreshMTMVInfo(TableNameInfo mvName, List<String> partitions, RefreshMode refreshMode) {
+        this(mvName, partitions, refreshMode, defaultAllowFallback(refreshMode));
+    }
+
+    public RefreshMTMVInfo(TableNameInfo mvName, List<String> partitions, RefreshMode refreshMode,
+            boolean allowFallback) {
         this.mvName = Objects.requireNonNull(mvName, "require mvName object");
         this.partitions = Utils.copyRequiredList(partitions);
         this.refreshMode = Objects.requireNonNull(refreshMode, "require refreshMode object");
+        this.allowFallback = allowFallback;
     }
 
     /**
@@ -98,10 +105,14 @@ public class RefreshMTMVInfo {
     }
 
     private void validateRefreshModeCompat(MTMV mtmv) {
+        if (refreshMode == RefreshMode.COMPLETE && allowFallback) {
+            throw new AnalysisException("COMPLETE refresh does not support FALLBACK");
+        }
+        if (!CollectionUtils.isEmpty(partitions) && allowFallback) {
+            throw new AnalysisException("partitionSpec does not support FALLBACK");
+        }
         boolean isIvm = mtmv.isIvm();
-        if (!isIvm
-                && (refreshMode == RefreshMode.INCREMENTAL
-                    || refreshMode == RefreshMode.PARTITIONS)) {
+        if (!isIvm && refreshMode == RefreshMode.INCREMENTAL && !allowFallback) {
             throw new AnalysisException(
                     "Cannot use " + refreshMode
                             + " refresh on a materialized view without INCREMENTAL capability.");
@@ -169,6 +180,14 @@ public class RefreshMTMVInfo {
         return refreshMode;
     }
 
+    public boolean allowFallback() {
+        return allowFallback;
+    }
+
+    public static boolean defaultAllowFallback(RefreshMode refreshMode) {
+        return refreshMode == RefreshMode.AUTO;
+    }
+
     /**
      * isComplete - backward compatibility helper
      *
@@ -184,6 +203,7 @@ public class RefreshMTMVInfo {
                 + "mvName=" + mvName
                 + ", partitions=" + partitions
                 + ", refreshMode=" + refreshMode
+                + ", allowFallback=" + allowFallback
                 + '}';
     }
 }

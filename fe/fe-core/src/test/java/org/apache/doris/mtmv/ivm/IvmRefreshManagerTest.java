@@ -86,7 +86,7 @@ public class IvmRefreshManagerTest {
     }
 
     @Test
-    public void testManagerReturnsExecutionFallbackOnExecutorFailure() {
+    public void testManagerThrowsHardFailureOnExecutorFailure() {
         MTMV mtmv = mockMtmv();
         Command deltaWriteCommand = Mockito.mock(Command.class);
         TestDeltaExecutor executor = new TestDeltaExecutor();
@@ -94,10 +94,11 @@ public class IvmRefreshManagerTest {
         TestIvmRefreshManager manager = new TestIvmRefreshManager(executor,
                 newContext(mtmv), makeCommands(deltaWriteCommand, mtmv));
 
-        IvmRefreshResult result = manager.doRefresh(mtmv);
+        IvmException exception = Assertions.assertThrows(IvmException.class,
+                () -> manager.doRefresh(mtmv));
 
-        Assertions.assertFalse(result.isSuccess());
-        Assertions.assertEquals(IvmFailureReason.INCREMENTAL_EXECUTION_FAILED, result.getFailureReason());
+        Assertions.assertEquals(IvmFailureReason.INCREMENTAL_EXECUTION_FAILED,
+                exception.getFailureReason());
         Assertions.assertTrue(executor.executeCalled);
     }
 
@@ -381,10 +382,12 @@ public class IvmRefreshManagerTest {
         TestIvmRefreshManager manager = new TestIvmRefreshManager(executor,
                 newContext(mtmv), makeCommands(deltaWriteCommand, mtmv));
 
-        IvmRefreshResult result = manager.doRefresh(mtmv);
+        IvmException exception = Assertions.assertThrows(IvmException.class,
+                () -> manager.doRefresh(mtmv));
 
         // Execution failed: flag should remain true, consumedTso NOT advanced
-        Assertions.assertFalse(result.isSuccess());
+        Assertions.assertEquals(IvmFailureReason.INCREMENTAL_EXECUTION_FAILED,
+                exception.getFailureReason());
         Assertions.assertTrue(ivmInfo.isRunningIvmRefresh());
         Assertions.assertEquals(5L, streamRef.getConsumedTso());
         // Only one editlog write: the one that set the flag=true before execution

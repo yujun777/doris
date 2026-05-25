@@ -84,6 +84,27 @@ public class MTMVTaskContextCompatTest {
         MTMVTaskContext ctx = GSON.fromJson(oldJson, MTMVTaskContext.class);
         Assert.assertFalse(ctx.isComplete());
         Assert.assertEquals(RefreshMode.AUTO, ctx.getRefreshMode());
+        Assert.assertTrue(ctx.allowFallback());
+    }
+
+    @Test
+    public void testDefaultAllowFallbackByRefreshMode() {
+        Assert.assertTrue(new MTMVTaskContext(
+                MTMVTaskTriggerMode.MANUAL, null, RefreshMode.AUTO).allowFallback());
+        Assert.assertFalse(new MTMVTaskContext(
+                MTMVTaskTriggerMode.MANUAL, null, RefreshMode.INCREMENTAL).allowFallback());
+        Assert.assertFalse(new MTMVTaskContext(
+                MTMVTaskTriggerMode.MANUAL, null, RefreshMode.PARTITIONS).allowFallback());
+        Assert.assertFalse(new MTMVTaskContext(
+                MTMVTaskTriggerMode.MANUAL, null, RefreshMode.COMPLETE).allowFallback());
+    }
+
+    @Test
+    public void testMvDefaultContextUsesPersistedPolicyMarker() {
+        MTMVTaskContext ctx = MTMVTaskContext.forMvDefault(MTMVTaskTriggerMode.SYSTEM);
+        Assert.assertTrue(ctx.useMvDefaultRefreshPolicy());
+        Assert.assertEquals(RefreshMode.AUTO, ctx.getRefreshMode());
+        Assert.assertTrue(ctx.allowFallback());
     }
 
     // Round-trip: serialize new → deserialize new preserves RefreshMode

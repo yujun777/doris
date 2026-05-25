@@ -22,6 +22,7 @@ import org.apache.doris.catalog.MTMV;
 import org.apache.doris.catalog.TableIf;
 import org.apache.doris.catalog.info.TableNameInfo;
 import org.apache.doris.common.UserException;
+import org.apache.doris.mtmv.MTMVPartitionInfo.MTMVPartitionType;
 import org.apache.doris.mtmv.MTMVRefreshEnum.RefreshMethod;
 import org.apache.doris.mtmv.MTMVRefreshInfo;
 import org.apache.doris.nereids.exceptions.AnalysisException;
@@ -55,13 +56,22 @@ public class AlterMTMVRefreshInfo extends AlterMTMVInfo {
                     .getDbOrDdlException(getMvName().getDb())
                     .getTableOrMetaException(getMvName().getTbl(), TableIf.TableType.MATERIALIZED_VIEW);
             RefreshMethod newMethod = refreshInfo.getRefreshMethod();
-            if (newMethod == null || newMethod == mtmv.getRefreshInfo().getRefreshMethod()) {
+            if (newMethod == null) {
                 return;
             }
             if (newMethod == RefreshMethod.INCREMENTAL) {
                 throw new AnalysisException(
                         "Cannot ALTER refresh method to INCREMENTAL. "
                         + "Please recreate the materialized view.");
+            }
+            if (newMethod == RefreshMethod.PARTITIONS
+                    && mtmv.getMvPartitionInfo().getPartitionType() == MTMVPartitionType.SELF_MANAGE) {
+                throw new AnalysisException(
+                        "Cannot ALTER refresh method to PARTITIONS on a non-partitioned materialized view. "
+                        + "Please recreate the materialized view with PARTITION BY.");
+            }
+            if (newMethod == mtmv.getRefreshInfo().getRefreshMethod()) {
+                return;
             }
             if (mtmv.isIvm()) {
                 throw new AnalysisException(

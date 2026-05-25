@@ -320,17 +320,11 @@ public class IvmRefreshManager {
             deltaExecutor.execute(context, commands, exprIdStart);
         } catch (Exception e) {
             // Leave runningIvmRefresh=true — the next task will detect this and
-            // fall back to full refresh, which resets the flag on success.
+            // require full refresh recovery, which resets the flag on success.
             String detail = e.getMessage() != null ? e.getMessage()
                     : e.getClass().getName() + " (no message)";
-            IvmRefreshResult result = buildExecutionFailureResult(detail);
-            if (result.getFailureReason() == IvmFailureReason.INCREMENTAL_EXECUTION_FAILED) {
-                LOG.warn("IVM execution failed for mv={}, result={}", mtmv.getName(), result, e);
-            } else {
-                LOG.info("IVM execution requires non-incremental recovery for mv={}, result={}",
-                        mtmv.getName(), result);
-            }
-            return result;
+            LOG.warn("IVM execution failed for mv={}, detail={}", mtmv.getName(), detail, e);
+            throw new IvmException(IvmFailureReason.INCREMENTAL_EXECUTION_FAILED, detail);
         }
 
         // Advance consumedTso to latestTso for all base tables and clear the flag,

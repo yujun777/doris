@@ -160,6 +160,7 @@ public class CreateMTMVInfo extends CreateTableInfo {
             enableIvm = isExplicitIncremental();
             analyzeQuery(ctx);
         }
+        validateRefreshStrategyForCreate();
         this.partitionDesc = generatePartitionDesc(ctx);
         if (distribution == null) {
             throw new AnalysisException("Create async materialized view should contain distribution desc");
@@ -438,6 +439,18 @@ public class CreateMTMVInfo extends CreateTableInfo {
 
     private boolean isAutoRefresh() {
         return refreshInfo.getRefreshMethod() == RefreshMethod.AUTO;
+    }
+
+    private boolean isPartitionsRefresh() {
+        return refreshInfo.getRefreshMethod() == RefreshMethod.PARTITIONS;
+    }
+
+    private void validateRefreshStrategyForCreate() {
+        if (isPartitionsRefresh()
+                && mvPartitionInfo.getPartitionType() == MTMVPartitionType.SELF_MANAGE) {
+            throw new AnalysisException(
+                    "REFRESH PARTITIONS requires PARTITION BY for materialized view");
+        }
     }
 
     public MTMVPartitionInfo getMvPartitionInfo() {
