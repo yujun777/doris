@@ -64,6 +64,8 @@ public class RefreshMTMVInfo {
     private final TableNameInfo mvName;
     private List<String> partitions;
     private RefreshMode refreshMode;
+    // Manual refresh fallback is always explicit in the task request. MV default
+    // policy is handled by scheduled/on-commit tasks, not by this command.
     private boolean allowFallback;
 
     public RefreshMTMVInfo(TableNameInfo mvName, List<String> partitions, RefreshMode refreshMode) {
@@ -106,9 +108,13 @@ public class RefreshMTMVInfo {
 
     private void validateRefreshModeCompat(MTMV mtmv) {
         if (refreshMode == RefreshMode.COMPLETE && allowFallback) {
+            // COMPLETE is already the terminal refresh method; FALLBACK would
+            // not add another safe attempt.
             throw new AnalysisException("COMPLETE refresh does not support FALLBACK");
         }
         if (!CollectionUtils.isEmpty(partitions) && allowFallback) {
+            // An explicit partitionSpec is an exact user scope and must not be
+            // expanded to a full refresh by fallback.
             throw new AnalysisException("partitionSpec does not support FALLBACK");
         }
         boolean isIvm = mtmv.isIvm();
@@ -118,6 +124,9 @@ public class RefreshMTMVInfo {
                             + " refresh on a materialized view without INCREMENTAL capability.");
         }
         if (isIvm && !CollectionUtils.isEmpty(partitions)) {
+            // IVM MVs should not bypass incremental semantics through a legacy
+            // partitionSpec. Users can explicitly choose the PARTITIONS keyword
+            // when they want the partition-refresh strategy.
             throw new AnalysisException(
                     "partitionSpec is not allowed on a materialized view with INCREMENTAL capability, "
                             + "use PARTITIONS keyword instead.");

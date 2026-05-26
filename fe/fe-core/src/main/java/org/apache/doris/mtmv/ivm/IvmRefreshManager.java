@@ -277,8 +277,10 @@ public class IvmRefreshManager {
         try {
             commands = analyzeDeltaCommands(context);
         } catch (IvmException e) {
-            // Preserve the typed failure reason across the refresh boundary so MTMVTask can decide
-            // whether ordinary partition fallback is enough or a full layout-baseline rebuild is required.
+            // Analysis has not written MV data yet, so unsupported IVM patterns
+            // can be represented as a fallback result for the task planner. Preserve
+            // the typed failure reason so MTMVTask can decide whether ordinary partition
+            // fallback is enough or a full layout-baseline rebuild is required.
             IvmPlanSignature currentSignature = e.getFailureReason() == IvmFailureReason.PLAN_SIGNATURE_MISMATCH
                     ? currentPlanSignatureForFallback : null;
             IvmRefreshResult result = IvmRefreshResult.fallback(
@@ -288,6 +290,9 @@ public class IvmRefreshManager {
         } catch (Exception e) {
             String detail = e.getMessage() != null ? e.getMessage()
                     : e.getClass().getName() + " (no message)";
+            // Unknown analysis errors are still pre-execution failures. Return a
+            // fallback result instead of throwing so AUTO/INCREMENTAL FALLBACK
+            // can try PARTITIONS/COMPLETE.
             IvmRefreshResult result = IvmRefreshResult.fallback(
                     IvmFailureReason.PLAN_PATTERN_UNSUPPORTED, detail);
             LOG.warn("IVM plan analysis failed for mv={}, result={}", mtmv.getName(), result, e);
@@ -321,6 +326,8 @@ public class IvmRefreshManager {
         } catch (Exception e) {
             // Leave runningIvmRefresh=true — the next task will detect this and
             // require full refresh recovery, which resets the flag on success.
+            // Do not return a fallback result here: delta commands are executed
+            // one by one and may already have partially modified the MV.
             String detail = e.getMessage() != null ? e.getMessage()
                     : e.getClass().getName() + " (no message)";
             LOG.warn("IVM execution failed for mv={}, detail={}", mtmv.getName(), detail, e);

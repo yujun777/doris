@@ -1792,6 +1792,8 @@ public class LogicalPlanBuilder extends DorisParserBaseVisitor<Object> {
     @Override
     public ParsedRefreshPolicy visitRefreshPolicy(DorisParser.RefreshPolicyContext ctx) {
         RefreshMethod refreshMethod = visitRefreshMethod(ctx == null ? null : ctx.refreshMethod());
+        // Missing policy on CREATE means AUTO, and AUTO keeps its historical
+        // implicit fallback. Non-AUTO methods require an explicit FALLBACK token.
         boolean allowFallback = ctx != null && ctx.refreshFallback() != null
                 ? true : MTMVRefreshInfo.defaultAllowFallback(refreshMethod);
         return new ParsedRefreshPolicy(refreshMethod, allowFallback);
@@ -1836,6 +1838,8 @@ public class LogicalPlanBuilder extends DorisParserBaseVisitor<Object> {
         }
         ParsedRefreshPolicy refreshPolicy = ctx.partitionSpec() == null
                 ? visitRefreshPolicy(ctx.refreshPolicy())
+                // Legacy REFRESH ... PARTITION(S) is an exact partition request,
+                // not the PARTITIONS refresh strategy with fallback.
                 : new ParsedRefreshPolicy(RefreshMethod.PARTITIONS, false);
         RefreshMTMVInfo refreshMTMVInfo = new RefreshMTMVInfo(new TableNameInfo(nameParts), partitions,
                 RefreshMode.valueOf(refreshPolicy.refreshMethod.name()), refreshPolicy.allowFallback);
@@ -1966,6 +1970,9 @@ public class LogicalPlanBuilder extends DorisParserBaseVisitor<Object> {
             if (ctx.refreshPolicy() != null) {
                 ParsedRefreshPolicy refreshPolicy = visitRefreshPolicy(ctx.refreshPolicy());
                 refreshInfo.setRefreshMethod(refreshPolicy.refreshMethod);
+                // Store fallback only when the method is present. ALTER REFRESH
+                // trigger-only statements must leave the existing fallback policy
+                // untouched.
                 refreshInfo.setAllowFallback(refreshPolicy.allowFallback);
             }
             if (ctx.refreshTrigger() != null) {

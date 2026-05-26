@@ -153,7 +153,11 @@ public class MTMVTask extends AbstractTask {
 
     private enum AttemptResultType {
         SUCCESS,
+        // The current attempt failed before writing MV data, so the task may
+        // continue to the next configured fallback attempt.
         FALLBACK_ALLOWED,
+        // A previous IVM delta may have partially written data. PARTITIONS
+        // cannot prove it repairs that state, so recovery must be COMPLETE.
         FALLBACK_TO_COMPLETE
     }
 
@@ -161,6 +165,8 @@ public class MTMVTask extends AbstractTask {
         private final RefreshMode refreshMode;
         private final boolean allowFallback;
         private final List<String> partitions;
+        // True only for REFRESH ... PARTITION(S). Explicit partition refresh is
+        // a user-selected scope and must not expand to COMPLETE via fallback.
         private final boolean explicitPartitions;
 
         private RefreshRequest(RefreshMode refreshMode, boolean allowFallback,
@@ -174,6 +180,8 @@ public class MTMVTask extends AbstractTask {
 
     private static class PartitionRefreshPlan {
         private final MTMVRefreshContext context;
+        // False means partition planning failed before any refresh write. The
+        // caller may convert it to COMPLETE only when the request allows fallback.
         private final boolean canRefreshByPartitions;
         private final List<String> partitions;
         private final String fallbackReason;
@@ -219,6 +227,8 @@ public class MTMVTask extends AbstractTask {
     MTMVTaskRefreshMode refreshMode;
     @SerializedName("lastQueryId")
     String lastQueryId;
+    // Persisted for SHOW MTMV TASK diagnostics. It records the IVM pre-execution
+    // reason that caused fallback, or the hard failure reason from IVM execution.
     @SerializedName("ifr")
     private String ivmFallbackReason;
     @SerializedName("cg")
@@ -276,6 +286,9 @@ public class MTMVTask extends AbstractTask {
             List<TableIf> tableIfs = Lists.newArrayList(tablesInPlan.first);
             tableIfs.sort(Comparator.comparing(TableIf::getId));
 
+            // This checks whether an MV in SCHEMA_CHANGE state still matches
+            // its base-table schema and partition definition. It is not part of
+            // refresh fallback: incompatible MV definitions must fail directly.
             ensureQueryUsableIfNeeded(ctx, tableIfs);
             RefreshRequest request = resolveRefreshRequest();
             for (RefreshAttemptType attemptType : buildAttempts(request)) {
@@ -376,6 +389,8 @@ public class MTMVTask extends AbstractTask {
 
     private RefreshRequest resolveRefreshRequest() throws JobException {
         if (taskContext.useMvDefaultRefreshPolicy()) {
+            // Scheduled/on-commit/system tasks use the policy persisted on the
+            // MV, not the default AUTO value of a newly created task context.
             RefreshMethod refreshMethod = mtmv.getRefreshInfo().getRefreshMethod();
             if (refreshMethod == null) {
                 throw new JobException("MTMV " + mtmv.getName()
@@ -385,6 +400,8 @@ public class MTMVTask extends AbstractTask {
                     mtmv.getRefreshInfo().allowFallback(), Lists.newArrayList(), false);
         }
         if (!CollectionUtils.isEmpty(taskContext.getPartitions())) {
+            // A partitionSpec is an exact manual request. It never falls back to
+            // COMPLETE because that would refresh more data than the user asked.
             return new RefreshRequest(RefreshMode.PARTITIONS, false, taskContext.getPartitions(), true);
         }
         return new RefreshRequest(taskContext.getRefreshMode(), taskContext.allowFallback(),
@@ -398,6 +415,8 @@ public class MTMVTask extends AbstractTask {
                 if (mtmv.isIvm()) {
                     attempts.add(RefreshAttemptType.IVM);
                 }
+                // AUTO always has the full fallback chain. If the MV was created
+                // as non-IVM, it starts from PARTITIONS and may end at COMPLETE.
                 attempts.add(RefreshAttemptType.PARTITIONS);
                 attempts.add(RefreshAttemptType.COMPLETE);
                 break;
@@ -426,6 +445,8 @@ public class MTMVTask extends AbstractTask {
     private PartitionRefreshPlan planPartitionRefresh(ConnectContext ctx, List<TableIf> tableIfs,
             RefreshRequest request) throws JobException, AnalysisException, DdlException {
         if (mtmv.isIvm() && mtmv.getIvmInfo().isRunningIvmRefresh()) {
+            // A failed IVM run may have written partial delta data. Only a
+            // COMPLETE refresh can be used as recovery; PARTITIONS is skipped.
             return PartitionRefreshPlan.fallback(
                     "A previous incremental refresh did not complete; full refresh is required");
         }
@@ -434,6 +455,8 @@ public class MTMVTask extends AbstractTask {
             return PartitionRefreshPlan.success(context, request.partitions);
         }
         if (mtmv.getMvPartitionInfo().getPartitionType() == MTMVPartitionType.SELF_MANAGE) {
+            // Keep this inside the PARTITIONS attempt so PARTITIONS FALLBACK and
+            // AUTO can still continue to COMPLETE for non-partitioned MVs.
             return PartitionRefreshPlan.fallback(
                     "The partition method of this asynchronous materialized view "
                             + "does not support refreshing by partition");
@@ -490,6 +513,8 @@ public class MTMVTask extends AbstractTask {
     private AttemptResultType executeIvmAttempt(RefreshRequest request) throws JobException {
         if (!mtmv.isIvm()) {
             if (request.allowFallback) {
+                // INCREMENTAL FALLBACK/AUTO may be run against an MV that does
+                // not currently have IVM metadata. Fall back before any write.
                 ivmFallbackReason = IvmFailureReason.STREAM_UNSUPPORTED.name();
                 return AttemptResultType.FALLBACK_ALLOWED;
             }
@@ -503,6 +528,9 @@ public class MTMVTask extends AbstractTask {
         try {
             ivmResult = ivmRefreshManager.doRefresh(mtmv);
         } catch (IvmException e) {
+            // IVM execution failures are hard failures. Delta commands run one
+            // by one and may already have written partial data, so this task must
+            // not continue to PARTITIONS/COMPLETE fallback.
             ivmFallbackReason = e.getFailureReason().name();
             throw new JobException("IVM incremental refresh failed for mv=" + mtmv.getName()
                     + ", reason=" + e.getFailureReason()
@@ -531,6 +559,9 @@ public class MTMVTask extends AbstractTask {
                     + ", detail=" + ivmResult.getDetailMessage());
         }
         if (ivmResult.getFailureReason() == IvmFailureReason.PREVIOUS_RUN_INCOMPLETE) {
+            // The previous task already entered the IVM execution phase. If
+            // fallback is allowed, jump directly to COMPLETE recovery instead of
+            // trying PARTITIONS first.
             LOG.warn("IVM previous run incomplete for mv={}, taskId={}. Continuing with COMPLETE recovery.",
                     mtmv.getName(), getTaskId());
             return AttemptResultType.FALLBACK_TO_COMPLETE;

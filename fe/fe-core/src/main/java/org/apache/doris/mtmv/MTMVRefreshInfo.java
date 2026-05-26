@@ -33,6 +33,9 @@ public class MTMVRefreshInfo {
     private BuildMode buildMode;
     @SerializedName("rm")
     private RefreshMethod refreshMethod;
+    // Nullable because ALTER may update only the trigger or method. A null
+    // value means "not specified in this update" or "old metadata"; the effective
+    // value is derived from the refresh method.
     @SerializedName("af")
     private Boolean allowFallback;
     @SerializedName("rti")
@@ -58,6 +61,8 @@ public class MTMVRefreshInfo {
     }
 
     public void validate() {
+        // COMPLETE is already the last refresh attempt, so FALLBACK would be
+        // meaningless and can hide invalid SQL/metadata.
         if (refreshMethod == RefreshMethod.COMPLETE && allowFallback()) {
             throw new AnalysisException("COMPLETE refresh does not support FALLBACK");
         }
@@ -86,6 +91,9 @@ public class MTMVRefreshInfo {
         if (allowFallback != null) {
             return allowFallback;
         }
+        // Backward compatibility for metadata written before allowFallback was
+        // persisted: AUTO kept its implicit fallback behavior; strict methods do
+        // not gain fallback unless it is explicitly stored.
         return defaultAllowFallback(refreshMethod);
     }
 
@@ -120,6 +128,9 @@ public class MTMVRefreshInfo {
         }
         if (newRefreshInfo.refreshMethod != null) {
             this.refreshMethod = newRefreshInfo.refreshMethod;
+            // When ALTER changes the method but does not specify FALLBACK,
+            // reset fallback to the new method default instead of carrying over
+            // the old method's fallback setting.
             this.allowFallback = newRefreshInfo.allowFallback != null
                     ? newRefreshInfo.allowFallback : defaultAllowFallback(newRefreshInfo.refreshMethod);
         } else if (newRefreshInfo.allowFallback != null) {

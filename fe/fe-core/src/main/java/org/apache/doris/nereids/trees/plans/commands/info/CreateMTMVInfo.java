@@ -155,8 +155,13 @@ public class CreateMTMVInfo extends CreateTableInfo {
         }
         analyzeProperties();
         if (isAutoRefresh()) {
+            // AUTO probes IVM as an optimization. If IVM analysis cannot support
+            // the query, creation may still succeed as a regular MTMV.
             analyzeAutoRefreshQuery(ctx);
         } else {
+            // Explicit INCREMENTAL, including INCREMENTAL FALLBACK, is strict at
+            // create time: FALLBACK only affects refresh execution, not whether
+            // the MV is physically created with IVM metadata.
             enableIvm = isExplicitIncremental();
             analyzeQuery(ctx);
         }
@@ -448,6 +453,10 @@ public class CreateMTMVInfo extends CreateTableInfo {
     private void validateRefreshStrategyForCreate() {
         if (isPartitionsRefresh()
                 && mvPartitionInfo.getPartitionType() == MTMVPartitionType.SELF_MANAGE) {
+            // A persisted PARTITIONS refresh policy must match the MV physical
+            // partition definition. Manual PARTITIONS FALLBACK may recover to
+            // COMPLETE at refresh time, but the default policy should not be
+            // stored on a non-partitioned MV.
             throw new AnalysisException(
                     "REFRESH PARTITIONS requires PARTITION BY for materialized view");
         }

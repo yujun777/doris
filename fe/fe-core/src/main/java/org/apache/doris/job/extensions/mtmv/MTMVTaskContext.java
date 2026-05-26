@@ -41,9 +41,16 @@ public class MTMVTaskContext {
     @SerializedName(value = "refreshMode")
     private RefreshMode refreshMode;
 
+    // Nullable for compatibility and partial policy sources:
+    // null means the task did not persist an explicit fallback choice and should
+    // use the default of its resolved refresh mode.
     @SerializedName(value = "allowFallback")
     private Boolean allowFallback;
 
+    // True for scheduled/on-commit/system tasks whose refresh method must be
+    // resolved from the MV's persisted refreshInfo at execution time. This is
+    // separate from refreshMode == null because old task JSON also lacks
+    // refreshMode and must still fall back to the legacy isComplete field.
     @SerializedName(value = "useMvDefaultRefreshPolicy")
     private boolean useMvDefaultRefreshPolicy;
 
@@ -124,6 +131,9 @@ public class MTMVTaskContext {
         if (allowFallback != null) {
             return allowFallback;
         }
+        // Old serialized tasks did not have allowFallback. Reconstruct the
+        // intended behavior from the resolved refresh mode: only AUTO defaults
+        // to fallback.
         return defaultAllowFallback(getRefreshMode());
     }
 
@@ -133,6 +143,9 @@ public class MTMVTaskContext {
 
     public static MTMVTaskContext forMvDefault(MTMVTaskTriggerMode triggerMode) {
         MTMVTaskContext taskContext = new MTMVTaskContext(triggerMode);
+        // Do not persist AUTO here. The actual method may be PARTITIONS,
+        // INCREMENTAL, or COMPLETE after CREATE/ALTER, so the task must read
+        // the MV default policy when it runs.
         taskContext.refreshMode = null;
         taskContext.allowFallback = null;
         taskContext.useMvDefaultRefreshPolicy = true;
