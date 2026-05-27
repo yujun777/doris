@@ -27,15 +27,13 @@ import org.apache.doris.info.TableNameInfoUtils;
 import org.apache.doris.mtmv.ivm.IvmAggMeta.AggTarget;
 import org.apache.doris.mtmv.ivm.IvmAggMeta.AggType;
 import org.apache.doris.nereids.trees.expressions.Alias;
-import org.apache.doris.nereids.trees.expressions.Cast;
 import org.apache.doris.nereids.trees.expressions.Expression;
 import org.apache.doris.nereids.trees.expressions.NamedExpression;
 import org.apache.doris.nereids.trees.expressions.Slot;
 import org.apache.doris.nereids.trees.expressions.SlotReference;
 import org.apache.doris.nereids.trees.expressions.functions.BoundFunction;
-import org.apache.doris.nereids.trees.expressions.functions.agg.AggregateFunction;
-import org.apache.doris.nereids.trees.expressions.functions.scalar.UniqueFunction;
 import org.apache.doris.nereids.trees.expressions.literal.Literal;
+import org.apache.doris.nereids.trees.expressions.visitor.ExpressionVisitor;
 import org.apache.doris.nereids.trees.plans.Plan;
 import org.apache.doris.nereids.trees.plans.algebra.SetOperation.Qualifier;
 import org.apache.doris.nereids.trees.plans.logical.LogicalAggregate;
@@ -69,6 +67,7 @@ public class IvmPlanSignatureGenerator {
     public static final int CURRENT_VERSION = 1;
     private static final String HEADER = "IVM_LAYOUT_SIGNATURE_V" + CURRENT_VERSION;
 
+    private final CanonicalExpressionVisitor canonicalExpressionVisitor = new CanonicalExpressionVisitor();
     private final CanonicalPlanVisitor canonicalPlanVisitor = new CanonicalPlanVisitor();
 
     public IvmPlanSignatureGenerator() {
@@ -89,7 +88,6 @@ public class IvmPlanSignatureGenerator {
 
     private CanonicalNode canonicalProject(LogicalProject<?> project, IvmNormalizeResult normalizeResult) {
         return CanonicalNode.node("PROJECT")
-                .field("distinct", project.isDistinct())
                 .field("outputs", canonicalNamedExpressions(project.getProjects()))
                 .field("child", canonicalPlan(project.child(), normalizeResult));
     }
@@ -162,8 +160,8 @@ public class IvmPlanSignatureGenerator {
             return CanonicalNode.node("ROW_ID_HASH")
                     .field("keys", keyColumns(table, scan));
         }
-        return CanonicalNode.node("UNSUPPORTED_ROW_ID")
-                .field("keysType", table.getKeysType());
+        throw new IvmException(IvmFailureReason.PLAN_PATTERN_UNSUPPORTED,
+                "IVM layout signature does not support row-id for keys type: " + table.getKeysType());
     }
 
     private CanonicalList keyColumns(OlapTable table, LogicalOlapScan scan) {
@@ -188,8 +186,8 @@ public class IvmPlanSignatureGenerator {
 
     private CanonicalNode canonicalUnion(LogicalUnion union, IvmNormalizeResult normalizeResult) {
         if (union.getQualifier() != Qualifier.ALL) {
-            return CanonicalNode.node("UNION")
-                    .field("qualifier", union.getQualifier());
+            throw new IvmException(IvmFailureReason.PLAN_PATTERN_UNSUPPORTED,
+                    "IVM layout signature does not support UNION qualifier: " + union.getQualifier());
         }
         CanonicalList arms = CanonicalList.list();
         for (int i = 0; i < union.children().size(); i++) {
@@ -215,10 +213,7 @@ public class IvmPlanSignatureGenerator {
             columns.add(CanonicalNode.node("COLUMN")
                     .field("ordinal", i)
                     .field("name", slot.getName())
-                    .field("type", type(slot))
-                    .field("nullable", slot.nullable())
-                    .field("ivm", Column.IVM_ROW_ID_COL.equals(slot.getName())
-                            || IvmUtil.isIvmHiddenColumn(slot.getName())));
+                    .field("type", type(slot)));
         }
         return columns;
     }
@@ -258,59 +253,21 @@ public class IvmPlanSignatureGenerator {
     }
 
     private CanonicalNode canonicalExpressionNode(Expression expression) {
-        if (expression instanceof Alias) {
-            return CanonicalNode.node("ALIAS")
-                    .field("child", canonicalExpressionNode(((Alias) expression).child()));
-        }
-        if (expression instanceof Slot) {
-            return canonicalSlot((Slot) expression);
-        }
-        if (expression instanceof Literal) {
-            Literal literal = (Literal) expression;
-            return CanonicalNode.node("LITERAL")
-                    .field("type", type(literal))
-                    .field("value", String.valueOf(literal.getValue()));
-        }
-        if (expression instanceof Cast) {
-            Cast cast = (Cast) expression;
-            return CanonicalNode.node("CAST")
-                    .field("class", expression.getClass().getSimpleName())
-                    .field("explicit", cast.isExplicitType())
-                    .field("child", canonicalExpressionNode(cast.child()))
-                    .field("targetType", type(expression));
-        }
-        if (expression instanceof AggregateFunction) {
-            AggregateFunction function = (AggregateFunction) expression;
-            return CanonicalNode.node("AGG_FUNC")
-                    .field("name", function.getName().toUpperCase(Locale.ROOT))
-                    .field("distinct", function.isDistinct())
-                    .field("skew", function.isSkew())
-                    .field("args", canonicalExpressions(function.children()))
-                    .field("type", type(expression))
-                    .field("nullable", expression.nullable());
-        }
-        if (expression instanceof BoundFunction) {
-            BoundFunction function = (BoundFunction) expression;
-            return CanonicalNode.node("FUNC")
-                    .field("name", function.getName().toUpperCase(Locale.ROOT))
-                    .field("unique", function instanceof UniqueFunction)
-                    .field("args", canonicalExpressions(function.children()))
-                    .field("type", type(expression))
-                    .field("nullable", expression.nullable());
-        }
-        return CanonicalNode.node("EXPR")
+        return expression.accept(canonicalExpressionVisitor, null);
+    }
+
+    private CanonicalNode canonicalGenericExpression(String nodeName, Expression expression) {
+        return CanonicalNode.node(nodeName)
                 .field("class", expression.getClass().getSimpleName())
                 .field("children", canonicalExpressions(expression.children()))
-                .field("type", type(expression))
-                .field("nullable", expression.nullable());
+                .field("type", type(expression));
     }
 
     private CanonicalNode canonicalSlot(Slot slot) {
         if (slot instanceof SlotReference) {
             SlotReference slotReference = (SlotReference) slot;
             CanonicalNode node = CanonicalNode.node("SLOT")
-                    .field("type", type(slot))
-                    .field("nullable", slot.nullable());
+                    .field("type", type(slot));
             if (slotReference.getOriginalTable().isPresent() && slotReference.getOriginalColumn().isPresent()) {
                 TableIf table = slotReference.getOriginalTable().get();
                 String columnName = slotReference.getOriginalColumn().get().getName();
@@ -323,8 +280,7 @@ public class IvmPlanSignatureGenerator {
         }
         return CanonicalNode.node("SLOT")
                 .field("name", slot.getName())
-                .field("type", type(slot))
-                .field("nullable", slot.nullable());
+                .field("type", type(slot));
     }
 
     private String tableIdentity(TableIf table, List<String> fallbackQualifier) {
@@ -556,6 +512,36 @@ public class IvmPlanSignatureGenerator {
         public CanonicalNode visitLogicalAggregate(LogicalAggregate<? extends Plan> agg,
                 IvmNormalizeResult normalizeResult) {
             return canonicalAggregate(agg, normalizeResult);
+        }
+    }
+
+    private class CanonicalExpressionVisitor extends ExpressionVisitor<CanonicalNode, Void> {
+        @Override
+        public CanonicalNode visit(Expression expression, Void context) {
+            return canonicalGenericExpression("EXPR", expression);
+        }
+
+        @Override
+        public CanonicalNode visitAlias(Alias alias, Void context) {
+            return CanonicalNode.node("ALIAS")
+                    .field("child", canonicalExpressionNode(alias.child()));
+        }
+
+        @Override
+        public CanonicalNode visitSlot(Slot slot, Void context) {
+            return canonicalSlot(slot);
+        }
+
+        @Override
+        public CanonicalNode visitLiteral(Literal literal, Void context) {
+            return canonicalGenericExpression("LITERAL", literal)
+                    .field("value", String.valueOf(literal.getValue()));
+        }
+
+        @Override
+        public CanonicalNode visitBoundFunction(BoundFunction function, Void context) {
+            return canonicalGenericExpression("FUNC", function)
+                    .field("name", function.getName().toUpperCase(Locale.ROOT));
         }
     }
 }

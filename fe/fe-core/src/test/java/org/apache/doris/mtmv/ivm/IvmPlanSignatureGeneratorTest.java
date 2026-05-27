@@ -24,6 +24,7 @@ import org.apache.doris.nereids.jobs.JobContext;
 import org.apache.doris.nereids.rules.exploration.join.JoinReorderContext;
 import org.apache.doris.nereids.rules.rewrite.IvmNormalizeMtmv;
 import org.apache.doris.nereids.trees.expressions.Alias;
+import org.apache.doris.nereids.trees.expressions.Cast;
 import org.apache.doris.nereids.trees.expressions.EqualTo;
 import org.apache.doris.nereids.trees.expressions.LessThan;
 import org.apache.doris.nereids.trees.expressions.NamedExpression;
@@ -40,6 +41,7 @@ import org.apache.doris.nereids.trees.plans.logical.LogicalOlapScan;
 import org.apache.doris.nereids.trees.plans.logical.LogicalProject;
 import org.apache.doris.nereids.trees.plans.logical.LogicalResultSink;
 import org.apache.doris.nereids.trees.plans.logical.LogicalUnion;
+import org.apache.doris.nereids.types.IntegerType;
 import org.apache.doris.nereids.util.PlanConstructor;
 import org.apache.doris.qe.ConnectContext;
 
@@ -62,6 +64,18 @@ class IvmPlanSignatureGeneratorTest extends IvmDeltaTestBase {
                 "canonical string should not contain ExprId text");
         Assertions.assertFalse(signature1.getCanonicalString().contains("LogicalProject["),
                 "canonical string should not contain debug plan id text");
+        Assertions.assertFalse(signature1.getCanonicalString().contains("distinct="),
+                "canonical string should not contain project DISTINCT flag");
+        Assertions.assertFalse(signature1.getCanonicalString().contains("ivm="),
+                "canonical string should not contain derived IVM column marker");
+        Assertions.assertFalse(signature1.getCanonicalString().contains("explicit="),
+                "canonical string should not contain cast explicit flag");
+        Assertions.assertFalse(signature1.getCanonicalString().contains("skew="),
+                "canonical string should not contain aggregate skew flag");
+        Assertions.assertFalse(signature1.getCanonicalString().contains("unique="),
+                "canonical string should not contain scalar function implementation marker");
+        Assertions.assertFalse(signature1.getCanonicalString().contains("nullable="),
+                "canonical string should not contain nullable flag");
     }
 
     @Test
@@ -89,6 +103,35 @@ class IvmPlanSignatureGeneratorTest extends IvmDeltaTestBase {
         Assertions.assertEquals(aliasA, aliasB);
         Assertions.assertFalse(aliasA.contains("alias_a"));
         Assertions.assertFalse(aliasB.contains("alias_b"));
+    }
+
+    @Test
+    void testSlotNullabilityDoesNotChangeExpressionSignature() {
+        IvmPlanSignatureGenerator generator = new IvmPlanSignatureGenerator();
+        SlotReference nullable = new SlotReference(StatementScopeIdGenerator.newExprId(),
+                "k1", IntegerType.INSTANCE, true, ImmutableList.of("db", "t"));
+        SlotReference nonNullable = new SlotReference(StatementScopeIdGenerator.newExprId(),
+                "k1", IntegerType.INSTANCE, false, ImmutableList.of("db", "t"));
+
+        Assertions.assertEquals(
+                generator.canonicalExpression(nullable),
+                generator.canonicalExpression(nonNullable));
+    }
+
+    @Test
+    void testGenericExpressionSignatureDoesNotRecordNonLayoutFlags() {
+        LogicalOlapScan scan = buildMowScan(1, "t");
+        Slot slot = scan.getOutput().get(0);
+        IvmPlanSignatureGenerator generator = new IvmPlanSignatureGenerator();
+
+        String cast = generator.canonicalExpression(new Cast(slot, IntegerType.INSTANCE, true));
+        String lessThan = generator.canonicalExpression(new LessThan(slot, new IntegerLiteral(1)));
+
+        Assertions.assertTrue(cast.contains("class=Cast"));
+        Assertions.assertTrue(lessThan.contains("class=LessThan"));
+        Assertions.assertFalse(cast.contains("explicit="));
+        Assertions.assertFalse(cast.contains("nullable="));
+        Assertions.assertFalse(lessThan.contains("nullable="));
     }
 
     @Test

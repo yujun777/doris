@@ -235,6 +235,10 @@ public class IvmNormalizeMtmv extends DefaultPlanRewriter<IvmNormalizeMtmv.Norma
     // whitelisted: project — recurse into child, then propagate row-id if not already present
     @Override
     public Plan visitLogicalProject(LogicalProject<? extends Plan> project, NormalizeContext context) {
+        if (project.isDistinct()) {
+            throw new IvmException(IvmFailureReason.PLAN_PATTERN_UNSUPPORTED,
+                    "IVM does not support DISTINCT project.");
+        }
         Plan newChild = project.child().accept(this, context);
         List<NamedExpression> newOutputs = rewriteOutputsWithIvmHiddenColumns(newChild, project.getProjects());
         if (newChild == project.child() && newOutputs.equals(project.getProjects())) {
