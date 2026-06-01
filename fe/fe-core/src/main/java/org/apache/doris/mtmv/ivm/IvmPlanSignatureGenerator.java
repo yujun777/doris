@@ -36,9 +36,9 @@ import org.apache.doris.nereids.trees.plans.logical.LogicalAggregate;
 import org.apache.doris.nereids.trees.plans.logical.LogicalFilter;
 import org.apache.doris.nereids.trees.plans.logical.LogicalJoin;
 import org.apache.doris.nereids.trees.plans.logical.LogicalOlapScan;
+import org.apache.doris.nereids.trees.plans.logical.LogicalOlapTableSink;
 import org.apache.doris.nereids.trees.plans.logical.LogicalProject;
 import org.apache.doris.nereids.trees.plans.logical.LogicalResultSink;
-import org.apache.doris.nereids.trees.plans.logical.LogicalSink;
 import org.apache.doris.nereids.trees.plans.logical.LogicalUnion;
 import org.apache.doris.nereids.trees.plans.visitor.PlanVisitor;
 
@@ -158,14 +158,6 @@ public class IvmPlanSignatureGenerator {
         return CanonicalNode.node("NAMED_EXPR")
                 .field("name", expression.getName())
                 .field("expr", canonicalExpressionNode(expression));
-    }
-
-    private CanonicalList canonicalPlanChildren(Plan plan, IvmNormalizeResult normalizeResult) {
-        CanonicalList children = CanonicalList.list();
-        for (Plan child : plan.children()) {
-            children.add(canonicalPlan(child, normalizeResult));
-        }
-        return children;
     }
 
     private CanonicalList canonicalExpressions(List<? extends Expression> expressions) {
@@ -385,9 +377,8 @@ public class IvmPlanSignatureGenerator {
     private class CanonicalPlanVisitor extends PlanVisitor<CanonicalNode, IvmNormalizeResult> {
         @Override
         public CanonicalNode visit(Plan plan, IvmNormalizeResult normalizeResult) {
-            return CanonicalNode.node("PLAN")
-                    .field("class", plan.getClass().getSimpleName())
-                    .field("children", canonicalPlanChildren(plan, normalizeResult));
+            throw new IllegalStateException("Unexpected plan node in IVM layout signature: "
+                    + plan.getClass().getSimpleName());
         }
 
         @Override
@@ -397,7 +388,8 @@ public class IvmPlanSignatureGenerator {
         }
 
         @Override
-        public CanonicalNode visitLogicalSink(LogicalSink<? extends Plan> sink, IvmNormalizeResult normalizeResult) {
+        public CanonicalNode visitLogicalOlapTableSink(LogicalOlapTableSink<? extends Plan> sink,
+                IvmNormalizeResult normalizeResult) {
             return sink.child().accept(this, normalizeResult);
         }
 
