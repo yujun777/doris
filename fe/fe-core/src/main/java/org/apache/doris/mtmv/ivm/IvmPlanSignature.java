@@ -22,20 +22,18 @@ import java.util.Objects;
 /**
  * IVM layout signature produced from the normalized maintenance plan.
  *
- * <p>The canonical string records only the plan properties that define the
- * incremental-maintenance layout, such as row-id derivation, hidden aggregate
- * state columns, join layout, union arm order, and final MV output layout. The
- * persisted signature stores only the SHA-256 digest; the canonical string is
- * kept in memory for diagnostics and tests.
+ * <p>The canonical string records only normalized-plan properties that may change
+ * IVM row-id or hidden-column layout, such as hidden output expressions, scan
+ * identity, join child order, and union arm order. The persisted signature stores
+ * only the SHA-256 digest; the canonical string is kept in memory for diagnostics
+ * and tests.
  *
  * <p>Example:
  * <pre>
  * canonicalString =
  *   IVM_LAYOUT_SIGNATURE_V1
- *   strategy=AGG
- *   output=[0:k:BIGINT:nullable=false:hidden=false,
- *           1:__ivm_row_id:BIGINT:nullable=false:hidden=true]
- *   plan=AGG_PROJECT[...]
+ *   ROOT[hiddenOutput=[SLOT[name=__DORIS_IVM_ROW_ID_COL__]],
+ *        plan=PROJECT[hiddenOutputs=[...],child=SCAN[table=ctl.db.t]]]
  * sha256 = 5a3f...e92c
  * </pre>
  */
