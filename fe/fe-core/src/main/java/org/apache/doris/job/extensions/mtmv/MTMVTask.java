@@ -300,6 +300,8 @@ public class MTMVTask extends AbstractTask {
         }
         ivmFallbackReason = ivmResult.getFailureReason().name();
         if (ivmResult.getFailureReason() == IvmFailureReason.PLAN_SIGNATURE_MISMATCH) {
+            // Keep the analyzed current signature only for this task run. After fallback full refresh succeeds,
+            // it becomes the next persisted layout baseline while the canonical string is logged for diagnosis.
             IvmPlanSignature currentPlanSignature = ivmResult.getCurrentPlanSignature();
             ivmFallbackPlanSignature = currentPlanSignature == null ? null : currentPlanSignature.getSha256();
             ivmFallbackPlanCanonicalString = currentPlanSignature == null

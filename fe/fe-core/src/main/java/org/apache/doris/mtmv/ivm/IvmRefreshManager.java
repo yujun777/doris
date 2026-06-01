@@ -277,6 +277,8 @@ public class IvmRefreshManager {
         try {
             commands = analyzeDeltaCommands(context);
         } catch (IvmException e) {
+            // Preserve the typed failure reason across the refresh boundary so MTMVTask can decide
+            // whether ordinary partition fallback is enough or a full layout-baseline rebuild is required.
             IvmPlanSignature currentSignature = e.getFailureReason() == IvmFailureReason.PLAN_SIGNATURE_MISMATCH
                     ? currentPlanSignatureForFallback : null;
             IvmRefreshResult result = IvmRefreshResult.fallback(
