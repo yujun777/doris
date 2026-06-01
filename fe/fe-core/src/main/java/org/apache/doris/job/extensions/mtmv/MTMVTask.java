@@ -59,6 +59,7 @@ import org.apache.doris.mtmv.MTMVRelatedTableIf;
 import org.apache.doris.mtmv.MTMVRelation;
 import org.apache.doris.mtmv.MTMVUtil;
 import org.apache.doris.mtmv.ivm.IvmFailureReason;
+import org.apache.doris.mtmv.ivm.IvmPlanSignature;
 import org.apache.doris.mtmv.ivm.IvmRefreshManager;
 import org.apache.doris.mtmv.ivm.IvmRefreshResult;
 import org.apache.doris.nereids.StatementContext;
@@ -164,6 +165,8 @@ public class MTMVTask extends AbstractTask {
     // Temporarily keeps the compact current layout signature hash from the failed IVM probe.
     // After the fallback full refresh succeeds, this hash becomes the next incremental baseline.
     private String ivmFallbackPlanSignature;
+    // Runtime-only diagnostic layout string for logging the next baseline after fallback full refresh.
+    private String ivmFallbackPlanCanonicalString;
 
     private MTMV mtmv;
     private MTMVRelation relation;
@@ -288,6 +291,7 @@ public class MTMVTask extends AbstractTask {
         }
         IvmRefreshManager ivmRefreshManager = new IvmRefreshManager();
         ivmFallbackPlanSignature = null;
+        ivmFallbackPlanCanonicalString = null;
         IvmRefreshResult ivmResult = ivmRefreshManager.doRefresh(mtmv);
         if (ivmResult.isSuccess()) {
             LOG.info("IVM incremental refresh succeeded for mv={}, taskId={}",
@@ -296,9 +300,11 @@ public class MTMVTask extends AbstractTask {
         }
         ivmFallbackReason = ivmResult.getFailureReason().name();
         if (ivmResult.getFailureReason() == IvmFailureReason.PLAN_SIGNATURE_MISMATCH) {
-            ivmFallbackPlanSignature = ivmResult.getCurrentPlanSignature() == null
+            IvmPlanSignature currentPlanSignature = ivmResult.getCurrentPlanSignature();
+            ivmFallbackPlanSignature = currentPlanSignature == null ? null : currentPlanSignature.getSha256();
+            ivmFallbackPlanCanonicalString = currentPlanSignature == null
                     ? null
-                    : ivmResult.getCurrentPlanSignature().getSha256();
+                    : currentPlanSignature.getCanonicalString();
         }
         // INCREMENTAL was explicitly requested; do not fall back to full refresh.
         if (currentRefreshMode == RefreshMode.INCREMENTAL) {
@@ -377,8 +383,10 @@ public class MTMVTask extends AbstractTask {
         if (ivmFallbackPlanSignature == null) {
             return;
         }
-        IvmRefreshManager.updatePlanSignatureAfterFullRefresh(mtmv, ivmFallbackPlanSignature);
+        IvmRefreshManager.updatePlanSignatureAfterFullRefresh(
+                mtmv, ivmFallbackPlanSignature, ivmFallbackPlanCanonicalString);
         ivmFallbackPlanSignature = null;
+        ivmFallbackPlanCanonicalString = null;
     }
 
     private void executeWithRetry(Set<String> execPartitionNames, Map<TableIf, String> tableWithPartKey)

@@ -401,12 +401,15 @@ public class IvmRefreshManager {
         LOG.info("IVM running refresh flag cleared after full refresh for mv={}", mtmv.getName());
     }
 
-    public static void updatePlanSignatureAfterFullRefresh(MTMV mtmv, String planSignature) {
+    public static void updatePlanSignatureAfterFullRefresh(MTMV mtmv, String planSignature,
+            String canonicalString) {
         IvmInfo ivmInfo = mtmv.getIvmInfo();
         ivmInfo.setPlanSignature(planSignature);
         TableNameInfo tableName = new TableNameInfo(mtmv.getQualifiedDbName(), mtmv.getName());
         Env.getCurrentEnv().alterMTMVIvmInfo(tableName, ivmInfo);
-        LOG.info("IVM layout signature updated after full refresh for mv={}", mtmv.getName());
+        LOG.info("IVM layout signature baseline updated after full refresh for mv={}, signature={}, "
+                        + "canonicalLayout={}",
+                mtmv.getName(), planSignature, canonicalString == null ? "null" : canonicalString);
     }
 
     @VisibleForTesting

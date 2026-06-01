@@ -422,6 +422,8 @@ public class MTMVTaskTest {
                     Deencapsulation.getField(task, "ivmFallbackReason"));
             Assert.assertEquals(currentSignature.getSha256(),
                     Deencapsulation.getField(task, "ivmFallbackPlanSignature"));
+            Assert.assertEquals(currentSignature.getCanonicalString(),
+                    Deencapsulation.getField(task, "ivmFallbackPlanCanonicalString"));
             List<String> needRefreshPartitions = Deencapsulation.getField(task, "needRefreshPartitions");
             Assert.assertEquals(mtmv.getPartitionNames(), Sets.newHashSet(needRefreshPartitions));
             Assert.assertEquals(MTMVTask.MTMVTaskRefreshMode.COMPLETE,
@@ -441,14 +443,16 @@ public class MTMVTaskTest {
         Mockito.when(mtmv.getName()).thenReturn("test_mv");
         MTMVTask task = new MTMVTask(mtmv, relation, new MTMVTaskContext(MTMVTaskTriggerMode.MANUAL));
         Deencapsulation.setField(task, "ivmFallbackPlanSignature", "new");
+        Deencapsulation.setField(task, "ivmFallbackPlanCanonicalString", "canonical");
 
         try (MockedStatic<IvmRefreshManager> managerStatic = Mockito.mockStatic(IvmRefreshManager.class)) {
             Deencapsulation.invoke(task, "updateIvmPlanSignatureAfterFullRefreshIfNeeded");
 
             managerStatic.verify(() -> IvmRefreshManager.updatePlanSignatureAfterFullRefresh(
-                    mtmv, "new"));
+                    mtmv, "new", "canonical"));
         }
         Assert.assertNull(Deencapsulation.getField(task, "ivmFallbackPlanSignature"));
+        Assert.assertNull(Deencapsulation.getField(task, "ivmFallbackPlanCanonicalString"));
     }
 
     @Test

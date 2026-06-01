@@ -47,6 +47,7 @@ import org.apache.doris.mtmv.MTMVRelation;
 import org.apache.doris.mtmv.MTMVUtil;
 import org.apache.doris.mtmv.ivm.IvmException;
 import org.apache.doris.mtmv.ivm.IvmFailureReason;
+import org.apache.doris.mtmv.ivm.IvmPlanSignature;
 import org.apache.doris.mysql.privilege.PrivPredicate;
 import org.apache.doris.nereids.CascadesContext;
 import org.apache.doris.nereids.StatementContext;
@@ -290,9 +291,14 @@ public class CreateMTMVInfo extends CreateTableInfo {
         this.columns = mtmvAnalyzeQueryInfo.getColumnDefinitions();
         this.relation = mtmvAnalyzeQueryInfo.getRelation();
         this.properties = mtmvAnalyzeQueryInfo.getProperties();
-        this.ivmPlanSignature = isEnableIvm()
-                ? mtmvAnalyzeQueryInfo.getIvmNormalizeResult().getPlanSignature().getSha256()
-                : null;
+        if (isEnableIvm()) {
+            IvmPlanSignature planSignature = mtmvAnalyzeQueryInfo.getIvmNormalizeResult().getPlanSignature();
+            this.ivmPlanSignature = planSignature.getSha256();
+            LOG.info("IVM layout signature baseline initialized for mv={}, signature={}, canonicalLayout={}",
+                    tableNameInfo.toSql(), this.ivmPlanSignature, planSignature.getCanonicalString());
+        } else {
+            this.ivmPlanSignature = null;
+        }
     }
 
     private void checkUserSpecifiedKeysForIvm() {
