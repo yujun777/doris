@@ -28,8 +28,6 @@ import org.apache.doris.nereids.trees.expressions.Expression;
 import org.apache.doris.nereids.trees.expressions.NamedExpression;
 import org.apache.doris.nereids.trees.expressions.Slot;
 import org.apache.doris.nereids.trees.expressions.SlotReference;
-import org.apache.doris.nereids.trees.expressions.functions.BoundFunction;
-import org.apache.doris.nereids.trees.expressions.literal.Literal;
 import org.apache.doris.nereids.trees.expressions.visitor.ExpressionVisitor;
 import org.apache.doris.nereids.trees.plans.Plan;
 import org.apache.doris.nereids.trees.plans.logical.LogicalAggregate;
@@ -51,7 +49,6 @@ import java.security.NoSuchAlgorithmException;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
-import java.util.Locale;
 
 /**
  * Builds the stable IVM maintenance-layout signature.
@@ -453,18 +450,6 @@ public class IvmPlanSignatureGenerator {
             // SlotReference needs stable table/column identity instead of SQL text, because Expression#toSql()
             // only carries the slot name and may collapse different tables that share the same column name.
             return canonicalSlot(slot);
-        }
-
-        @Override
-        public CanonicalNode visitLiteral(Literal literal, Void context) {
-            return canonicalGenericExpression("LITERAL", literal)
-                    .field("value", String.valueOf(literal.getValue()));
-        }
-
-        @Override
-        public CanonicalNode visitBoundFunction(BoundFunction function, Void context) {
-            return canonicalGenericExpression("FUNC", function)
-                    .field("name", function.getName().toUpperCase(Locale.ROOT));
         }
     }
 }
