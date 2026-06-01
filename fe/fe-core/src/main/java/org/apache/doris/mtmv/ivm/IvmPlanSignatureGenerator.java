@@ -442,12 +442,16 @@ public class IvmPlanSignatureGenerator {
 
         @Override
         public CanonicalNode visitAlias(Alias alias, Void context) {
+            // Alias#toSql() includes the alias name, but arbitrary alias renames must not change the
+            // maintenance layout signature. Hidden output names are recorded by canonicalNamedExpression().
             return CanonicalNode.node("ALIAS")
                     .field("child", canonicalExpressionNode(alias.child()));
         }
 
         @Override
         public CanonicalNode visitSlot(Slot slot, Void context) {
+            // SlotReference needs stable table/column identity instead of SQL text, because Expression#toSql()
+            // only carries the slot name and may collapse different tables that share the same column name.
             return canonicalSlot(slot);
         }
 
