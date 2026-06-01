@@ -192,10 +192,11 @@ public class IvmRefreshManager {
         if (signatureMatched) {
             return;
         }
-        if (LOG.isDebugEnabled() && currentSignature != null) {
-            LOG.debug("IVM current canonical layout for mv={}: {}", mtmv.getName(),
-                    currentSignature.getCanonicalString());
-        }
+        LOG.info("IVM layout signature mismatch for mv={}, storedSignature={}, currentSignature={}, "
+                        + "currentCanonicalLayout={}",
+                mtmv.getName(), storedSignature,
+                currentSignature == null ? "null" : currentSignature.getSha256(),
+                currentSignature == null ? "null" : currentSignature.getCanonicalString());
         String detail = "IVM layout signature mismatch for mv=" + mtmv.getName()
                 + ", storedSignature=" + storedSignature
                 + ", currentSignature=" + (currentSignature == null ? "null" : currentSignature.getSha256())
