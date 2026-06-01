@@ -17,15 +17,12 @@
 
 package org.apache.doris.mtmv.ivm;
 
-import org.apache.doris.catalog.Column;
-import org.apache.doris.catalog.KeysType;
 import org.apache.doris.catalog.OlapTable;
 import org.apache.doris.catalog.Table;
 import org.apache.doris.catalog.TableIf;
 import org.apache.doris.catalog.info.TableNameInfo;
+import org.apache.doris.common.util.DebugPointUtil;
 import org.apache.doris.info.TableNameInfoUtils;
-import org.apache.doris.mtmv.ivm.IvmAggMeta.AggTarget;
-import org.apache.doris.mtmv.ivm.IvmAggMeta.AggType;
 import org.apache.doris.nereids.trees.expressions.Alias;
 import org.apache.doris.nereids.trees.expressions.Expression;
 import org.apache.doris.nereids.trees.expressions.NamedExpression;
@@ -35,7 +32,6 @@ import org.apache.doris.nereids.trees.expressions.functions.BoundFunction;
 import org.apache.doris.nereids.trees.expressions.literal.Literal;
 import org.apache.doris.nereids.trees.expressions.visitor.ExpressionVisitor;
 import org.apache.doris.nereids.trees.plans.Plan;
-import org.apache.doris.nereids.trees.plans.algebra.SetOperation.Qualifier;
 import org.apache.doris.nereids.trees.plans.logical.LogicalAggregate;
 import org.apache.doris.nereids.trees.plans.logical.LogicalFilter;
 import org.apache.doris.nereids.trees.plans.logical.LogicalJoin;
@@ -47,7 +43,6 @@ import org.apache.doris.nereids.trees.plans.logical.LogicalUnion;
 import org.apache.doris.nereids.trees.plans.visitor.PlanVisitor;
 
 import com.google.common.annotations.VisibleForTesting;
-import com.google.common.collect.Sets;
 import org.apache.commons.lang3.StringUtils;
 
 import java.nio.charset.StandardCharsets;
@@ -57,14 +52,15 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Locale;
-import java.util.Map;
-import java.util.Set;
 
 /**
  * Builds the stable IVM maintenance-layout signature.
  */
 public class IvmPlanSignatureGenerator {
     public static final int CURRENT_VERSION = 1;
+    @VisibleForTesting
+    public static final String DEBUG_POINT_SIGNATURE_SALT =
+            "IvmPlanSignatureGenerator.generate.signature_salt";
     private static final String HEADER = "IVM_LAYOUT_SIGNATURE_V" + CURRENT_VERSION;
 
     private final CanonicalExpressionVisitor canonicalExpressionVisitor = new CanonicalExpressionVisitor();
@@ -76,9 +72,14 @@ public class IvmPlanSignatureGenerator {
     public IvmPlanSignature generate(IvmNormalizeResult normalizeResult) {
         Plan normalizedPlan = normalizeResult.getNormalizedPlan();
         CanonicalNode root = CanonicalNode.node("ROOT")
-                .field("output", canonicalOutput(normalizedPlan.getOutput()))
+                .field("hiddenOutput", canonicalHiddenSlots(normalizedPlan.getOutput()))
                 .field("plan", canonicalPlan(normalizedPlan, normalizeResult));
         String canonical = HEADER + "\n" + root.encoded();
+        // Test hook for simulating analyzed-plan layout drift without rebuilding a separate plan.
+        String debugSalt = DebugPointUtil.getDebugParamOrDefault(DEBUG_POINT_SIGNATURE_SALT, "");
+        if (!debugSalt.isEmpty()) {
+            canonical = canonical + "\nDEBUG_SIGNATURE_SALT=" + debugSalt;
+        }
         return new IvmPlanSignature(canonical, sha256(canonical));
     }
 
@@ -88,94 +89,20 @@ public class IvmPlanSignatureGenerator {
 
     private CanonicalNode canonicalProject(LogicalProject<?> project, IvmNormalizeResult normalizeResult) {
         return CanonicalNode.node("PROJECT")
-                .field("outputs", canonicalNamedExpressions(project.getProjects()))
+                .field("hiddenOutputs", canonicalHiddenNamedExpressions(project.getProjects()))
                 .field("child", canonicalPlan(project.child(), normalizeResult));
     }
 
     private CanonicalNode canonicalAggregate(LogicalAggregate<?> agg, IvmNormalizeResult normalizeResult) {
-        CanonicalNode node = CanonicalNode.node("AGG")
-                .field("groupBy", canonicalExpressions(agg.getGroupByExpressions()))
-                .field("outputs", canonicalNamedExpressions(agg.getOutputExpressions()))
+        return CanonicalNode.node("AGG")
+                .field("hiddenOutputs", canonicalHiddenNamedExpressions(agg.getOutputExpressions()))
                 .field("child", canonicalPlan(agg.child(), normalizeResult));
-        if (normalizeResult.getAggMeta() != null) {
-            node.field("aggMeta", canonicalAggMeta(normalizeResult.getAggMeta()));
-        }
-        return node;
-    }
-
-    private CanonicalNode canonicalAggMeta(IvmAggMeta aggMeta) {
-        CanonicalList targets = CanonicalList.list();
-        for (AggTarget target : aggMeta.getAggTargets()) {
-            targets.add(canonicalAggTarget(target));
-        }
-        return CanonicalNode.node("AGG_META")
-                .field("scalar", aggMeta.isScalarAgg())
-                .field("groupKeys", canonicalSlots(aggMeta.getGroupKeySlots()))
-                .field("rowId", aggMeta.isScalarAgg() ? "const(0)" : "hash(groupKeys)")
-                .field("groupCount", canonicalSlot(aggMeta.getGroupCountSlot()))
-                .field("targets", targets);
-    }
-
-    private CanonicalNode canonicalAggTarget(AggTarget target) {
-        return CanonicalNode.node("AGG_TARGET")
-                .field("ordinal", target.getOrdinal())
-                .field("aggType", target.getAggType())
-                .field("visible", canonicalSlot(target.getVisibleSlot()))
-                .field("args", canonicalExpressions(target.getExprArgs()))
-                .field("hidden", canonicalHiddenStates(target.getHiddenStateSlots()));
-    }
-
-    private CanonicalList canonicalHiddenStates(Map<AggType, Slot> hiddenStateSlots) {
-        List<Map.Entry<AggType, Slot>> entries = new ArrayList<>(hiddenStateSlots.entrySet());
-        entries.sort(new Comparator<Map.Entry<AggType, Slot>>() {
-            @Override
-            public int compare(Map.Entry<AggType, Slot> left, Map.Entry<AggType, Slot> right) {
-                return left.getKey().name().compareTo(right.getKey().name());
-            }
-        });
-        CanonicalList states = CanonicalList.list();
-        for (Map.Entry<AggType, Slot> entry : entries) {
-            states.add(CanonicalNode.node("HIDDEN_STATE")
-                    .field("type", entry.getKey().name())
-                    .field("slot", canonicalSlot(entry.getValue())));
-        }
-        return states;
     }
 
     private CanonicalNode canonicalScan(LogicalOlapScan scan) {
         OlapTable table = scan.getTable();
         return CanonicalNode.node("SCAN")
-                .field("table", tableIdentity(table, scan.getQualifier()))
-                .field("keysType", table.getKeysType())
-                .field("rowId", rowIdInfo(scan))
-                .field("outputs", canonicalSlots(scan.getOutput()));
-    }
-
-    private CanonicalValue rowIdInfo(LogicalOlapScan scan) {
-        OlapTable table = scan.getTable();
-        if (table.getKeysType() == KeysType.DUP_KEYS) {
-            return canonicalValue("uuid_numeric()");
-        }
-        if (table.getKeysType() == KeysType.UNIQUE_KEYS || table.getKeysType() == KeysType.AGG_KEYS) {
-            return CanonicalNode.node("ROW_ID_HASH")
-                    .field("keys", keyColumns(table, scan));
-        }
-        throw new IvmException(IvmFailureReason.PLAN_PATTERN_UNSUPPORTED,
-                "IVM layout signature does not support row-id for keys type: " + table.getKeysType());
-    }
-
-    private CanonicalList keyColumns(OlapTable table, LogicalOlapScan scan) {
-        Set<String> keyColNames = Sets.newHashSet();
-        for (Column column : table.getBaseSchemaKeyColumns()) {
-            keyColNames.add(column.getName());
-        }
-        CanonicalList keySlots = CanonicalList.list();
-        for (Slot slot : scan.getOutput()) {
-            if (keyColNames.contains(slot.getName())) {
-                keySlots.add(canonicalSlot(slot));
-            }
-        }
-        return keySlots;
+                .field("table", tableIdentity(table, scan.getQualifier()));
     }
 
     private CanonicalNode canonicalJoin(LogicalJoin<?, ?> join, IvmNormalizeResult normalizeResult) {
@@ -185,64 +112,66 @@ public class IvmPlanSignatureGenerator {
     }
 
     private CanonicalNode canonicalUnion(LogicalUnion union, IvmNormalizeResult normalizeResult) {
-        if (union.getQualifier() != Qualifier.ALL) {
-            throw new IvmException(IvmFailureReason.PLAN_PATTERN_UNSUPPORTED,
-                    "IVM layout signature does not support UNION qualifier: " + union.getQualifier());
-        }
         CanonicalList arms = CanonicalList.list();
         for (int i = 0; i < union.children().size(); i++) {
             arms.add(CanonicalNode.node("UNION_ARM")
                     .field("index", i)
                     .field("plan", canonicalPlan(union.child(i), normalizeResult)));
         }
-        CanonicalList childOutputs = CanonicalList.list();
-        for (List<SlotReference> output : union.getRegularChildrenOutputs()) {
-            childOutputs.add(canonicalSlots(output));
-        }
         return CanonicalNode.node("UNION")
-                .field("rowId", "hash(armIndex,child.rowId)")
-                .field("outputs", canonicalNamedExpressions(union.getOutputs()))
-                .field("childOutputs", childOutputs)
+                .field("hiddenOutputs", canonicalHiddenNamedExpressions(union.getOutputs()))
                 .field("arms", arms);
     }
 
-    private CanonicalList canonicalOutput(List<Slot> output) {
-        CanonicalList columns = CanonicalList.list();
-        for (int i = 0; i < output.size(); i++) {
-            Slot slot = output.get(i);
-            columns.add(CanonicalNode.node("COLUMN")
-                    .field("ordinal", i)
-                    .field("name", slot.getName())
-                    .field("type", type(slot)));
+    private CanonicalList canonicalHiddenSlots(List<? extends Slot> output) {
+        List<CanonicalNode> columns = new ArrayList<>();
+        for (Slot slot : output) {
+            if (!IvmUtil.isIvmHiddenColumn(slot.getName())) {
+                continue;
+            }
+            columns.add(canonicalSlot(slot));
         }
-        return columns;
+        return sortedCanonicalList(columns);
     }
 
-    private CanonicalList canonicalNamedExpressions(List<? extends NamedExpression> expressions) {
+    private CanonicalList canonicalHiddenNamedExpressions(List<? extends NamedExpression> expressions) {
+        List<CanonicalNode> result = new ArrayList<>();
+        for (NamedExpression expression : expressions) {
+            if (!IvmUtil.isIvmHiddenColumn(expression.getName())) {
+                continue;
+            }
+            result.add(canonicalNamedExpression(expression));
+        }
+        return sortedCanonicalList(result);
+    }
+
+    private CanonicalList sortedCanonicalList(List<CanonicalNode> nodes) {
+        nodes.sort(Comparator.comparing(CanonicalNode::encoded));
         CanonicalList result = CanonicalList.list();
-        for (int i = 0; i < expressions.size(); i++) {
-            NamedExpression expression = expressions.get(i);
-            result.add(CanonicalNode.node("NAMED_EXPR")
-                    .field("ordinal", i)
-                    .field("name", expression.getName())
-                    .field("expr", canonicalExpressionNode(expression))
-                    .field("slot", canonicalSlot(expression.toSlot())));
+        for (CanonicalNode node : nodes) {
+            result.add(node);
         }
         return result;
+    }
+
+    private CanonicalNode canonicalNamedExpression(NamedExpression expression) {
+        return CanonicalNode.node("NAMED_EXPR")
+                .field("name", expression.getName())
+                .field("expr", canonicalExpressionNode(expression));
+    }
+
+    private CanonicalList canonicalPlanChildren(Plan plan, IvmNormalizeResult normalizeResult) {
+        CanonicalList children = CanonicalList.list();
+        for (Plan child : plan.children()) {
+            children.add(canonicalPlan(child, normalizeResult));
+        }
+        return children;
     }
 
     private CanonicalList canonicalExpressions(List<? extends Expression> expressions) {
         CanonicalList result = CanonicalList.list();
         for (Expression expression : expressions) {
             result.add(canonicalExpressionNode(expression));
-        }
-        return result;
-    }
-
-    private CanonicalList canonicalSlots(List<? extends Slot> slots) {
-        CanonicalList result = CanonicalList.list();
-        for (Slot slot : slots) {
-            result.add(canonicalSlot(slot));
         }
         return result;
     }
@@ -259,15 +188,13 @@ public class IvmPlanSignatureGenerator {
     private CanonicalNode canonicalGenericExpression(String nodeName, Expression expression) {
         return CanonicalNode.node(nodeName)
                 .field("class", expression.getClass().getSimpleName())
-                .field("children", canonicalExpressions(expression.children()))
-                .field("type", type(expression));
+                .field("children", canonicalExpressions(expression.children()));
     }
 
     private CanonicalNode canonicalSlot(Slot slot) {
         if (slot instanceof SlotReference) {
             SlotReference slotReference = (SlotReference) slot;
-            CanonicalNode node = CanonicalNode.node("SLOT")
-                    .field("type", type(slot));
+            CanonicalNode node = CanonicalNode.node("SLOT");
             if (slotReference.getOriginalTable().isPresent() && slotReference.getOriginalColumn().isPresent()) {
                 TableIf table = slotReference.getOriginalTable().get();
                 String columnName = slotReference.getOriginalColumn().get().getName();
@@ -279,8 +206,7 @@ public class IvmPlanSignatureGenerator {
                     .field("subPath", canonicalSubPath(slotReference));
         }
         return CanonicalNode.node("SLOT")
-                .field("name", slot.getName())
-                .field("type", type(slot));
+                .field("name", slot.getName());
     }
 
     private String tableIdentity(TableIf table, List<String> fallbackQualifier) {
@@ -311,10 +237,6 @@ public class IvmPlanSignatureGenerator {
             result.add(item);
         }
         return result;
-    }
-
-    private String type(Expression expression) {
-        return expression.getDataType().toSql();
     }
 
     private static String sha256(String canonical) {
@@ -463,9 +385,9 @@ public class IvmPlanSignatureGenerator {
     private class CanonicalPlanVisitor extends PlanVisitor<CanonicalNode, IvmNormalizeResult> {
         @Override
         public CanonicalNode visit(Plan plan, IvmNormalizeResult normalizeResult) {
-            throw new IvmException(IvmFailureReason.PLAN_PATTERN_UNSUPPORTED,
-                    "IVM layout signature does not support plan node: "
-                            + plan.getClass().getSimpleName());
+            return CanonicalNode.node("PLAN")
+                    .field("class", plan.getClass().getSimpleName())
+                    .field("children", canonicalPlanChildren(plan, normalizeResult));
         }
 
         @Override

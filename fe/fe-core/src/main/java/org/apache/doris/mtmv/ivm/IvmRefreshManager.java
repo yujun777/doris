@@ -50,6 +50,7 @@ import java.util.Set;
 public class IvmRefreshManager {
     private static final Logger LOG = LogManager.getLogger(IvmRefreshManager.class);
     private final IvmDeltaExecutor deltaExecutor;
+    private IvmPlanSignature currentPlanSignatureForFallback;
 
     public IvmRefreshManager() {
         this(new IvmDeltaExecutor());
@@ -62,6 +63,7 @@ public class IvmRefreshManager {
 
     public IvmRefreshResult doRefresh(MTMV mtmv) {
         Objects.requireNonNull(mtmv, "mtmv can not be null");
+        currentPlanSignatureForFallback = null;
         IvmRefreshResult precheckResult = precheck(mtmv);
         if (!precheckResult.isSuccess()) {
             LOG.warn("IVM precheck failed for mv={}, result={}", mtmv.getName(), precheckResult);
@@ -182,6 +184,7 @@ public class IvmRefreshManager {
     void validatePlanSignature(MTMV mtmv, MTMVAnalyzeQueryInfo queryInfo) {
         IvmNormalizeResult normalizeResult = queryInfo.getIvmNormalizeResult();
         IvmPlanSignature currentSignature = normalizeResult == null ? null : normalizeResult.getPlanSignature();
+        currentPlanSignatureForFallback = currentSignature;
         IvmInfo ivmInfo = mtmv.getIvmInfo();
         String storedSignature = ivmInfo.getPlanSignature();
         boolean signatureMatched = currentSignature != null
@@ -197,7 +200,7 @@ public class IvmRefreshManager {
                 + ", storedSignature=" + storedSignature
                 + ", currentSignature=" + (currentSignature == null ? "null" : currentSignature.getSha256())
                 + ". Run a full refresh to rebuild IVM layout baseline.";
-        throw new IvmException(IvmFailureReason.PLAN_SIGNATURE_MISMATCH, detail, currentSignature);
+        throw new IvmException(IvmFailureReason.PLAN_SIGNATURE_MISMATCH, detail);
     }
 
     /**
@@ -273,8 +276,10 @@ public class IvmRefreshManager {
         try {
             commands = analyzeDeltaCommands(context);
         } catch (IvmException e) {
+            IvmPlanSignature currentSignature = e.getFailureReason() == IvmFailureReason.PLAN_SIGNATURE_MISMATCH
+                    ? currentPlanSignatureForFallback : null;
             IvmRefreshResult result = IvmRefreshResult.fallback(
-                    e.getFailureReason(), e.getMessage(), e.getCurrentPlanSignature());
+                    e.getFailureReason(), e.getMessage(), currentSignature);
             LOG.warn("IVM plan analysis failed for mv={}, result={}", mtmv.getName(), result, e);
             return result;
         } catch (Exception e) {

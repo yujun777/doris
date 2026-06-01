@@ -174,7 +174,6 @@ public class IvmRefreshManagerTest {
                 () -> manager.validatePlanSignature(mtmv, queryInfo));
 
         Assertions.assertEquals(IvmFailureReason.PLAN_SIGNATURE_MISMATCH, exception.getFailureReason());
-        Assertions.assertSame(currentSignature, exception.getCurrentPlanSignature());
         Assertions.assertTrue(exception.getMessage().contains("storedSignature=null"));
     }
 
@@ -193,7 +192,6 @@ public class IvmRefreshManagerTest {
                 () -> manager.validatePlanSignature(mtmv, queryInfo));
 
         Assertions.assertEquals(IvmFailureReason.PLAN_SIGNATURE_MISMATCH, exception.getFailureReason());
-        Assertions.assertSame(currentSignature, exception.getCurrentPlanSignature());
         Assertions.assertTrue(exception.getMessage().contains("storedSignature=old"));
         Assertions.assertTrue(exception.getMessage().contains("currentSignature=new"));
     }
@@ -202,13 +200,16 @@ public class IvmRefreshManagerTest {
     public void testPlanSignatureMismatchFallbackCarriesCurrentSignature() {
         MTMV mtmv = mockMtmv();
         IvmPlanSignature currentSignature = new IvmPlanSignature("canonical", "new");
+        IvmInfo ivmInfo = new IvmInfo();
+        ivmInfo.setPlanSignature("old");
+        Mockito.when(mtmv.getIvmInfo()).thenReturn(ivmInfo);
         TestDeltaExecutor executor = new TestDeltaExecutor();
         TestIvmRefreshManager manager = new TestIvmRefreshManager(executor,
                 newContext(mtmv), Collections.emptyList()) {
             @Override
             List<Command> analyzeDeltaCommands(IvmRefreshContext ctx) {
-                throw new IvmException(IvmFailureReason.PLAN_SIGNATURE_MISMATCH,
-                        "layout drift", currentSignature);
+                validatePlanSignature(mtmv, newQueryInfo(currentSignature));
+                return Collections.emptyList();
             }
         };
 

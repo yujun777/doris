@@ -26,6 +26,7 @@ import org.apache.doris.nereids.rules.rewrite.IvmNormalizeMtmv;
 import org.apache.doris.nereids.trees.expressions.Alias;
 import org.apache.doris.nereids.trees.expressions.Cast;
 import org.apache.doris.nereids.trees.expressions.EqualTo;
+import org.apache.doris.nereids.trees.expressions.Expression;
 import org.apache.doris.nereids.trees.expressions.LessThan;
 import org.apache.doris.nereids.trees.expressions.NamedExpression;
 import org.apache.doris.nereids.trees.expressions.Slot;
@@ -41,6 +42,7 @@ import org.apache.doris.nereids.trees.plans.logical.LogicalOlapScan;
 import org.apache.doris.nereids.trees.plans.logical.LogicalProject;
 import org.apache.doris.nereids.trees.plans.logical.LogicalResultSink;
 import org.apache.doris.nereids.trees.plans.logical.LogicalUnion;
+import org.apache.doris.nereids.types.BigIntType;
 import org.apache.doris.nereids.types.IntegerType;
 import org.apache.doris.nereids.util.PlanConstructor;
 import org.apache.doris.qe.ConnectContext;
@@ -76,6 +78,10 @@ class IvmPlanSignatureGeneratorTest extends IvmDeltaTestBase {
                 "canonical string should not contain scalar function implementation marker");
         Assertions.assertFalse(signature1.getCanonicalString().contains("nullable="),
                 "canonical string should not contain nullable flag");
+        Assertions.assertFalse(signature1.getCanonicalString().contains("type="),
+                "canonical string should not contain type fields");
+        Assertions.assertFalse(signature1.getCanonicalString().contains("keysType="),
+                "canonical string should not contain scan key type");
     }
 
     @Test
@@ -106,16 +112,16 @@ class IvmPlanSignatureGeneratorTest extends IvmDeltaTestBase {
     }
 
     @Test
-    void testSlotNullabilityDoesNotChangeExpressionSignature() {
+    void testSlotTypeAndNullabilityDoNotChangeExpressionSignature() {
         IvmPlanSignatureGenerator generator = new IvmPlanSignatureGenerator();
         SlotReference nullable = new SlotReference(StatementScopeIdGenerator.newExprId(),
                 "k1", IntegerType.INSTANCE, true, ImmutableList.of("db", "t"));
-        SlotReference nonNullable = new SlotReference(StatementScopeIdGenerator.newExprId(),
-                "k1", IntegerType.INSTANCE, false, ImmutableList.of("db", "t"));
+        SlotReference nonNullableWithDifferentType = new SlotReference(StatementScopeIdGenerator.newExprId(),
+                "k1", BigIntType.INSTANCE, false, ImmutableList.of("db", "t"));
 
         Assertions.assertEquals(
                 generator.canonicalExpression(nullable),
-                generator.canonicalExpression(nonNullable));
+                generator.canonicalExpression(nonNullableWithDifferentType));
     }
 
     @Test
@@ -130,8 +136,35 @@ class IvmPlanSignatureGeneratorTest extends IvmDeltaTestBase {
         Assertions.assertTrue(cast.contains("class=Cast"));
         Assertions.assertTrue(lessThan.contains("class=LessThan"));
         Assertions.assertFalse(cast.contains("explicit="));
+        Assertions.assertFalse(cast.contains("type="));
         Assertions.assertFalse(cast.contains("nullable="));
         Assertions.assertFalse(lessThan.contains("nullable="));
+    }
+
+    @Test
+    void testProjectVisibleOutputOrderDoesNotChangeSignature() {
+        LogicalOlapScan scan1 = buildMowScan(1, "t");
+        IvmPlanSignature idName = signatureForPlan(buildScanRoot(scan1,
+                ImmutableList.copyOf(scan1.getOutput())));
+
+        LogicalOlapScan scan2 = buildMowScan(1, "t");
+        IvmPlanSignature nameId = signatureForPlan(buildScanRoot(scan2,
+                ImmutableList.of(scan2.getOutput().get(1), scan2.getOutput().get(0))));
+
+        Assertions.assertEquals(idName.getSha256(), nameId.getSha256());
+    }
+
+    @Test
+    void testProjectRowIdExpressionOrderChangesSignature() {
+        LogicalOlapScan scan1 = buildMowScan(1, "t");
+        IvmPlanSignature idName = signatureForNormalizedPlan(buildRowIdProject(scan1,
+                ImmutableList.of(scan1.getOutput().get(0), scan1.getOutput().get(1))));
+
+        LogicalOlapScan scan2 = buildMowScan(1, "t");
+        IvmPlanSignature nameId = signatureForNormalizedPlan(buildRowIdProject(scan2,
+                ImmutableList.of(scan2.getOutput().get(1), scan2.getOutput().get(0))));
+
+        Assertions.assertNotEquals(idName.getSha256(), nameId.getSha256());
     }
 
     @Test
@@ -183,13 +216,14 @@ class IvmPlanSignatureGeneratorTest extends IvmDeltaTestBase {
     }
 
     @Test
-    void testAggregateSignatureContainsHiddenState() {
+    void testAggregateSignatureUsesNormalizedHiddenOutputsWithoutAggMeta() {
         PlanBundle bundle = normalizeAggPlan(buildGroupedAgg(buildMowScan(1, "t")));
         IvmPlanSignature signature = bundle.normalizeResult.getPlanSignature();
 
-        Assertions.assertTrue(signature.getCanonicalString().contains("AGG_META"));
+        Assertions.assertFalse(signature.getCanonicalString().contains("AGG_META"));
+        Assertions.assertFalse(signature.getCanonicalString().contains("aggType="));
         Assertions.assertTrue(signature.getCanonicalString().contains(Column.IVM_AGG_COUNT_COL));
-        Assertions.assertTrue(signature.getCanonicalString().contains("aggType=AVG"));
+        Assertions.assertTrue(signature.getCanonicalString().contains("__DORIS_IVM_AGG_2_SUM_COL__"));
     }
 
     @Test
@@ -244,10 +278,30 @@ class IvmPlanSignatureGeneratorTest extends IvmDeltaTestBase {
         return normalizeResult.getPlanSignature();
     }
 
+    private IvmPlanSignature signatureForNormalizedPlan(Plan normalizedPlan) {
+        IvmNormalizeResult normalizeResult = new IvmNormalizeResult();
+        normalizeResult.setNormalizedPlan(normalizedPlan);
+        return new IvmPlanSignatureGenerator().generate(normalizeResult);
+    }
+
     private LogicalResultSink<?> buildScanRoot(Plan plan) {
         ImmutableList<NamedExpression> exprs = ImmutableList.copyOf(plan.getOutput());
-        LogicalProject<?> project = new LogicalProject<>(exprs, plan);
-        return new LogicalResultSink<>(exprs, project);
+        return buildScanRoot(plan, exprs);
+    }
+
+    private LogicalResultSink<?> buildScanRoot(Plan plan, List<? extends NamedExpression> exprs) {
+        ImmutableList<NamedExpression> outputExprs = ImmutableList.copyOf(exprs);
+        LogicalProject<?> project = new LogicalProject<>(outputExprs, plan);
+        return new LogicalResultSink<>(outputExprs, project);
+    }
+
+    private LogicalProject<?> buildRowIdProject(LogicalOlapScan scan, List<? extends Expression> rowIdArgs) {
+        Alias rowIdAlias = new Alias(IvmUtil.buildRowIdHash(rowIdArgs), Column.IVM_ROW_ID_COL);
+        ImmutableList<NamedExpression> exprs = ImmutableList.<NamedExpression>builder()
+                .add(rowIdAlias)
+                .addAll(scan.getOutput())
+                .build();
+        return new LogicalProject<>(exprs, scan);
     }
 
     private LogicalOlapScan buildMowScan(long tableId, String name) {

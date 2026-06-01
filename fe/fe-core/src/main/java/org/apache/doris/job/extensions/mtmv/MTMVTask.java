@@ -311,11 +311,12 @@ public class MTMVTask extends AbstractTask {
                 + "Continuing with partition-based refresh.",
                 mtmv.getName(), ivmResult.getFailureReason(),
                 ivmResult.getDetailMessage(), getTaskId());
-        // The earlier partition calculation belongs to the ordinary MTMV refresh path
-        // and may have produced NOT_REFRESH or PARTIAL. Once AUTO IVM falls back, rebuild
-        // the whole MV so recovery state and layout signature baseline can be reset safely.
-        this.needRefreshPartitions = Lists.newArrayList(mtmv.getPartitionNames());
-        this.refreshMode = generateRefreshMode(needRefreshPartitions);
+        // Only a layout-signature mismatch requires rebuilding the full MV to establish
+        // a new baseline. Other IVM fallbacks should keep the ordinary MTMV refresh scope.
+        if (ivmResult.getFailureReason() == IvmFailureReason.PLAN_SIGNATURE_MISMATCH) {
+            this.needRefreshPartitions = Lists.newArrayList(mtmv.getPartitionNames());
+            this.refreshMode = generateRefreshMode(needRefreshPartitions);
+        }
         return false;
     }
 

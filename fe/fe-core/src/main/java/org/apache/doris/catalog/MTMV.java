@@ -130,7 +130,10 @@ public class MTMV extends OlapTable {
         this.refreshSnapshot = new MTMVRefreshSnapshot();
         this.ivmInfo = new IvmInfo();
         this.ivmInfo.setEnableIvm(params.enableIvm);
-        if (params.enableIvm && params.ivmPlanSignature != null) {
+        if (params.enableIvm) {
+            if (params.ivmPlanSignature == null) {
+                throw new IllegalArgumentException("IVM materialized view requires a plan signature");
+            }
             this.ivmInfo.setPlanSignature(params.ivmPlanSignature);
         }
         this.envInfo = new EnvInfo(-1L, -1L);
