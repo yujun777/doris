@@ -178,8 +178,13 @@ public class IvmPlanSignatureGenerator {
     }
 
     private CanonicalNode canonicalGenericExpression(String nodeName, Expression expression) {
+        // Keep a custom recursive child signature so SlotReference can use stable table/column identity.
+        // Plain Expression#toSql() would print slot names only, so different tables with the same column
+        // name could collapse to the same layout string. The sql field still records expression-level
+        // semantics, such as cast target types or function syntax, without replacing slot canonicalization.
         return CanonicalNode.node(nodeName)
                 .field("class", expression.getClass().getSimpleName())
+                .field("sql", expression.toSql())
                 .field("children", canonicalExpressions(expression.children()));
     }
 

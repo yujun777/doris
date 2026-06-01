@@ -109,6 +109,7 @@ class IvmPlanSignatureGeneratorTest extends IvmDeltaTestBase {
         Assertions.assertEquals(aliasA, aliasB);
         Assertions.assertFalse(aliasA.contains("alias_a"));
         Assertions.assertFalse(aliasB.contains("alias_b"));
+        Assertions.assertFalse(aliasA.contains(" AS "));
     }
 
     @Test
@@ -134,7 +135,10 @@ class IvmPlanSignatureGeneratorTest extends IvmDeltaTestBase {
         String lessThan = generator.canonicalExpression(new LessThan(slot, new IntegerLiteral(1)));
 
         Assertions.assertTrue(cast.contains("class=Cast"));
+        Assertions.assertTrue(cast.contains("sql=cast("));
+        Assertions.assertTrue(cast.contains("as INT"));
         Assertions.assertTrue(lessThan.contains("class=LessThan"));
+        Assertions.assertTrue(lessThan.contains("sql=(id < 1)"));
         Assertions.assertFalse(cast.contains("explicit="));
         Assertions.assertFalse(cast.contains("type="));
         Assertions.assertFalse(cast.contains("nullable="));
