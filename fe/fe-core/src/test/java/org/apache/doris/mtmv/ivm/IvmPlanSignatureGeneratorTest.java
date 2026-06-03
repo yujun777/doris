@@ -189,6 +189,25 @@ class IvmPlanSignatureGeneratorTest extends IvmDeltaTestBase {
     }
 
     @Test
+    void testJoinTypeChangesSignature() {
+        LogicalOlapScan left1 = buildMowScan(1, "l");
+        LogicalOlapScan right1 = buildMowScan(2, "r");
+        LogicalJoin<?, ?> innerJoin = new LogicalJoin<>(JoinType.INNER_JOIN,
+                ImmutableList.of(new EqualTo(left1.getOutput().get(0), right1.getOutput().get(0))),
+                left1, right1, JoinReorderContext.EMPTY);
+
+        LogicalOlapScan left2 = buildMowScan(1, "l");
+        LogicalOlapScan right2 = buildMowScan(2, "r");
+        LogicalJoin<?, ?> leftOuterJoin = new LogicalJoin<>(JoinType.LEFT_OUTER_JOIN,
+                ImmutableList.of(new EqualTo(left2.getOutput().get(0), right2.getOutput().get(0))),
+                left2, right2, JoinReorderContext.EMPTY);
+
+        Assertions.assertNotEquals(
+                signatureForPlan(buildScanRoot(innerJoin)).getSha256(),
+                signatureForPlan(buildScanRoot(leftOuterJoin)).getSha256());
+    }
+
+    @Test
     void testInnerJoinPredicateDoesNotChangeSignature() {
         LogicalOlapScan scanA1 = buildMowScan(1, "a");
         LogicalOlapScan scanB1 = buildMowScan(2, "b");

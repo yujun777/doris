@@ -15,70 +15,63 @@
 // specific language governing permissions and limitations
 // under the License.
 
-import org.apache.doris.regression.suite.ClusterOptions
-
-suite("test_ivm_plan_signature_fallback", "docker") {
+suite("test_ivm_plan_signature_fallback", "nonConcurrent") {
     def tableName = "test_ivm_plan_signature_fallback_t"
     def mvName = "test_ivm_plan_signature_fallback_mv"
     def signatureSaltDebugPoint = "IvmPlanSignatureGenerator.generate.signature_salt"
 
-    def options = new ClusterOptions()
-    options.enableDebugPoints()
+    GetDebugPoint().disableDebugPointForAllFEs(signatureSaltDebugPoint)
 
-    docker(options) {
-        GetDebugPoint().disableDebugPointForAllFEs(signatureSaltDebugPoint)
+    sql """drop materialized view if exists ${mvName};"""
+    sql """drop table if exists ${tableName};"""
 
-        sql """drop materialized view if exists ${mvName};"""
-        sql """drop table if exists ${tableName};"""
+    sql """
+        CREATE TABLE ${tableName} (
+            k1 INT,
+            v1 INT
+        )
+        UNIQUE KEY(k1)
+        DISTRIBUTED BY HASH(k1) BUCKETS 2
+        PROPERTIES (
+            "replication_num" = "1",
+            "binlog.enable" = "true",
+            "binlog.format" = "ROW",
+            "enable_unique_key_merge_on_write" = "true"
+        );
+    """
 
-        sql """
-            CREATE TABLE ${tableName} (
-                k1 INT,
-                v1 INT
-            )
-            UNIQUE KEY(k1)
-            DISTRIBUTED BY HASH(k1) BUCKETS 2
-            PROPERTIES (
-                "replication_num" = "1",
-                "binlog.enable" = "true",
-                "binlog.format" = "ROW",
-                "enable_unique_key_merge_on_write" = "true"
-            );
-        """
+    sql """INSERT INTO ${tableName} VALUES (1, 10), (2, 20);"""
 
-        sql """INSERT INTO ${tableName} VALUES (1, 10), (2, 20);"""
+    sql """
+        CREATE MATERIALIZED VIEW ${mvName}
+        BUILD DEFERRED REFRESH INCREMENTAL ON MANUAL
+        DISTRIBUTED BY RANDOM BUCKETS 2
+        PROPERTIES (
+            "replication_num" = "1"
+        )
+        AS SELECT k1, v1 FROM ${tableName};
+    """
 
-        sql """
-            CREATE MATERIALIZED VIEW ${mvName}
-            BUILD DEFERRED REFRESH INCREMENTAL ON MANUAL
-            DISTRIBUTED BY RANDOM BUCKETS 2
-            PROPERTIES (
-                "replication_num" = "1"
-            )
-            AS SELECT k1, v1 FROM ${tableName};
-        """
+    sql """REFRESH MATERIALIZED VIEW ${mvName} COMPLETE"""
+    waitingMTMVTaskFinishedByMvName(mvName)
 
-        sql """REFRESH MATERIALIZED VIEW ${mvName} COMPLETE"""
+    sql """INSERT INTO ${tableName} VALUES (3, 30);"""
+
+    try {
+        GetDebugPoint().enableDebugPointForAllFEs(signatureSaltDebugPoint, [value: "plan_changed"])
+        sql """REFRESH MATERIALIZED VIEW ${mvName} AUTO"""
         waitingMTMVTaskFinishedByMvName(mvName)
-
-        sql """INSERT INTO ${tableName} VALUES (3, 30);"""
-
-        try {
-            GetDebugPoint().enableDebugPointForAllFEs(signatureSaltDebugPoint, [value: "plan_changed"])
-            sql """REFRESH MATERIALIZED VIEW ${mvName} AUTO"""
-            waitingMTMVTaskFinishedByMvName(mvName)
-        } finally {
-            GetDebugPoint().disableDebugPointForAllFEs(signatureSaltDebugPoint)
-        }
-
-        def refreshMode = sql """
-            SELECT RefreshMode FROM tasks('type'='mv')
-            WHERE MvDatabaseName = '${context.dbName}' AND MvName = '${mvName}'
-            ORDER BY CreateTime DESC, TaskId DESC LIMIT 1
-        """
-        assertEquals("COMPLETE", refreshMode[0][0].toString())
-
-        def rows = sql """SELECT k1, v1 FROM ${mvName} ORDER BY k1"""
-        assertEquals("[[1, 10], [2, 20], [3, 30]]", rows.toString())
+    } finally {
+        GetDebugPoint().disableDebugPointForAllFEs(signatureSaltDebugPoint)
     }
+
+    def refreshMode = sql """
+        SELECT RefreshMode FROM tasks('type'='mv')
+        WHERE MvDatabaseName = '${context.dbName}' AND MvName = '${mvName}'
+        ORDER BY CreateTime DESC, TaskId DESC LIMIT 1
+    """
+    assertEquals("COMPLETE", refreshMode[0][0].toString())
+
+    def rows = sql """SELECT k1, v1 FROM ${mvName} ORDER BY k1"""
+    assertEquals("[[1, 10], [2, 20], [3, 30]]", rows.toString())
 }

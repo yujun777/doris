@@ -104,6 +104,7 @@ public class IvmPlanSignatureGenerator {
 
     private CanonicalNode canonicalJoin(LogicalJoin<?, ?> join, IvmNormalizeResult normalizeResult) {
         return CanonicalNode.node("JOIN")
+                .field("joinType", join.getJoinType().name())
                 .field("left", canonicalPlan(join.left(), normalizeResult))
                 .field("right", canonicalPlan(join.right(), normalizeResult));
     }
