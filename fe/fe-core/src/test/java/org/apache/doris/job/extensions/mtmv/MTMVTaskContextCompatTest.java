@@ -107,6 +107,25 @@ public class MTMVTaskContextCompatTest {
         Assert.assertTrue(ctx.allowFallback());
     }
 
+    @Test
+    public void testNewJsonUsesShortFallbackPolicyFieldNames() {
+        MTMVTaskContext ctx = MTMVTaskContext.forMvDefault(MTMVTaskTriggerMode.SYSTEM);
+        String json = GSON.toJson(ctx);
+        JsonObject obj = GSON.fromJson(json, JsonObject.class);
+        Assert.assertFalse(obj.has("allowFallback"));
+        Assert.assertFalse(obj.has("useMvDefaultRefreshPolicy"));
+        Assert.assertTrue(obj.has("md"));
+    }
+
+    @Test
+    public void testOldJsonFallbackPolicyFieldNamesStillDeserialize() {
+        String oldJson = "{\"triggerMode\":\"SYSTEM\",\"allowFallback\":false,"
+                + "\"useMvDefaultRefreshPolicy\":true}";
+        MTMVTaskContext ctx = GSON.fromJson(oldJson, MTMVTaskContext.class);
+        Assert.assertFalse(ctx.allowFallback());
+        Assert.assertTrue(ctx.useMvDefaultRefreshPolicy());
+    }
+
     // Round-trip: serialize new → deserialize new preserves RefreshMode
     @Test
     public void testRoundTripPreservesRefreshMode() {

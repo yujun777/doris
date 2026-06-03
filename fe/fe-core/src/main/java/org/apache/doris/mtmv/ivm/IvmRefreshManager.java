@@ -328,6 +328,9 @@ public class IvmRefreshManager {
             // require full refresh recovery, which resets the flag on success.
             // Do not return a fallback result here: delta commands are executed
             // one by one and may already have partially modified the MV.
+            // TODO(IVM): Classify known execution-time recovery cases such as
+            // MIN_MAX_BOUNDARY_HIT and NON_DETERMINISTIC_ROW_ID separately when
+            // full-refresh fallback is safe to start immediately.
             String detail = e.getMessage() != null ? e.getMessage()
                     : e.getClass().getName() + " (no message)";
             LOG.warn("IVM execution failed for mv={}, detail={}", mtmv.getName(), detail, e);

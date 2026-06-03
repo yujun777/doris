@@ -44,14 +44,14 @@ public class MTMVTaskContext {
     // Nullable for compatibility and partial policy sources:
     // null means the task did not persist an explicit fallback choice and should
     // use the default of its resolved refresh mode.
-    @SerializedName(value = "allowFallback")
+    @SerializedName(value = "af", alternate = "allowFallback")
     private Boolean allowFallback;
 
     // True for scheduled/on-commit/system tasks whose refresh method must be
     // resolved from the MV's persisted refreshInfo at execution time. This is
     // separate from refreshMode == null because old task JSON also lacks
     // refreshMode and must still fall back to the legacy isComplete field.
-    @SerializedName(value = "useMvDefaultRefreshPolicy")
+    @SerializedName(value = "md", alternate = "useMvDefaultRefreshPolicy")
     private boolean useMvDefaultRefreshPolicy;
 
     public MTMVTaskContext(MTMVTaskTriggerMode triggerMode) {
@@ -65,35 +65,17 @@ public class MTMVTaskContext {
     }
 
     public MTMVTaskContext(MTMVTaskTriggerMode triggerMode, List<String> partitions, RefreshMode refreshMode,
-            String computeGroup) {
-        this(triggerMode, partitions, refreshMode, defaultAllowFallback(refreshMode), computeGroup);
-    }
-
-    public MTMVTaskContext(MTMVTaskTriggerMode triggerMode, List<String> partitions, RefreshMode refreshMode,
             boolean allowFallback) {
         this(triggerMode, partitions, refreshMode, allowFallback, null);
     }
 
-    public MTMVTaskContext(MTMVTaskTriggerMode triggerMode, List<String> partitions, RefreshMode refreshMode,
+    private MTMVTaskContext(MTMVTaskTriggerMode triggerMode, List<String> partitions, RefreshMode refreshMode,
             boolean allowFallback, String computeGroup) {
         this.triggerMode = triggerMode;
         this.partitions = partitions;
         this.refreshMode = refreshMode;
         this.isComplete = refreshMode == RefreshMode.COMPLETE;
         this.allowFallback = allowFallback;
-        this.computeGroup = computeGroup;
-    }
-
-    public MTMVTaskContext(MTMVTaskTriggerMode triggerMode, List<String> partitions, boolean isComplete) {
-        this(triggerMode, partitions, isComplete, null);
-    }
-
-    public MTMVTaskContext(MTMVTaskTriggerMode triggerMode, List<String> partitions, boolean isComplete,
-            String computeGroup) {
-        this.triggerMode = triggerMode;
-        this.partitions = partitions;
-        this.isComplete = isComplete;
-        this.refreshMode = isComplete ? RefreshMode.COMPLETE : RefreshMode.AUTO;
         this.computeGroup = computeGroup;
     }
 
@@ -150,6 +132,11 @@ public class MTMVTaskContext {
         taskContext.allowFallback = null;
         taskContext.useMvDefaultRefreshPolicy = true;
         return taskContext;
+    }
+
+    public static MTMVTaskContext of(MTMVTaskTriggerMode triggerMode, List<String> partitions,
+            RefreshMode refreshMode, boolean allowFallback, String computeGroup) {
+        return new MTMVTaskContext(triggerMode, partitions, refreshMode, allowFallback, computeGroup);
     }
 
     private static boolean defaultAllowFallback(RefreshMode refreshMode) {

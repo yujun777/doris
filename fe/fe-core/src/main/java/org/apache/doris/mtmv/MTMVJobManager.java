@@ -159,7 +159,7 @@ public class MTMVJobManager implements MTMVHookService {
     @Override
     public void refreshMTMV(RefreshMTMVInfo info) throws DdlException, MetaNotFoundException, JobException {
         MTMVJob job = getJobByTableNameInfo(info.getMvName());
-        MTMVTaskContext mtmvTaskContext = new MTMVTaskContext(MTMVTaskTriggerMode.MANUAL, info.getPartitions(),
+        MTMVTaskContext mtmvTaskContext = MTMVTaskContext.of(MTMVTaskTriggerMode.MANUAL, info.getPartitions(),
                 info.getRefreshMode(), info.allowFallback(), getCurrentComputeGroup());
         Env.getCurrentEnv().getJobManager().triggerJob(job.getJobId(), mtmvTaskContext);
     }
