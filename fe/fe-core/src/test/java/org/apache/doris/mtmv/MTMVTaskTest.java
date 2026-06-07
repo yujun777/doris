@@ -123,7 +123,7 @@ public class MTMVTaskTest {
 
     @Test
     public void testCalculateNeedRefreshPartitionsManualComplete() throws AnalysisException, JobException {
-        MTMVTaskContext context = new MTMVTaskContext(MTMVTaskTriggerMode.MANUAL, null, RefreshMode.COMPLETE);
+        MTMVTaskContext context = MTMVTaskContext.of(MTMVTaskTriggerMode.MANUAL, null, RefreshMode.COMPLETE);
         MTMVTask task = new MTMVTask(mtmv, relation, context);
         List<String> result = task.calculateNeedRefreshPartitions(null);
         Assert.assertEquals(allPartitionNames, result);
@@ -131,7 +131,7 @@ public class MTMVTaskTest {
 
     @Test
     public void testCalculateNeedRefreshPartitionsManualPartitions() throws AnalysisException, JobException {
-        MTMVTaskContext context = new MTMVTaskContext(MTMVTaskTriggerMode.MANUAL, Lists.newArrayList(poneName),
+        MTMVTaskContext context = MTMVTaskContext.of(MTMVTaskTriggerMode.MANUAL, Lists.newArrayList(poneName),
                 RefreshMode.AUTO);
         MTMVTask task = new MTMVTask(mtmv, relation, context);
         List<String> result = task.calculateNeedRefreshPartitions(null);
@@ -234,8 +234,8 @@ public class MTMVTaskTest {
         try {
             Config.cloud_unique_id = "test_cloud";
             ConnectContext ctx = new ConnectContext();
-            MTMVTaskContext context = new MTMVTaskContext(MTMVTaskTriggerMode.MANUAL, null,
-                    RefreshMode.COMPLETE, "cg1");
+            MTMVTaskContext context = MTMVTaskContext.of(MTMVTaskTriggerMode.MANUAL, null,
+                    RefreshMode.COMPLETE, true, "cg1");
             MTMVTask task = new MTMVTask(mtmv, relation, context);
 
             Deencapsulation.invoke(task, "setComputeGroup", ctx);
@@ -473,8 +473,8 @@ public class MTMVTaskTest {
     public void testIvmExecutionFailureDoesNotFallback() throws Exception {
         Mockito.when(mtmv.isIvm()).thenReturn(true);
         Mockito.when(mtmv.getName()).thenReturn("test_mv");
-        MTMVTaskContext context = new MTMVTaskContext(MTMVTaskTriggerMode.MANUAL, null,
-                RefreshMode.INCREMENTAL, true);
+        MTMVTaskContext context = MTMVTaskContext.of(MTMVTaskTriggerMode.MANUAL, null,
+                RefreshMode.INCREMENTAL, true, null);
         MTMVTask task = new MTMVTask(mtmv, relation, context);
 
         try (MockedConstruction<IvmRefreshManager> ignored = Mockito.mockConstruction(IvmRefreshManager.class,

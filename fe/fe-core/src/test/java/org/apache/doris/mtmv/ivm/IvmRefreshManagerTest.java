@@ -103,15 +103,11 @@ public class IvmRefreshManagerTest {
     }
 
     @Test
-    public void testManagerMapsExecutionFallbackReasonFromDetail() {
-        assertExecutionFailureReason("IVM: deleted row may be current MIN value",
-                IvmFailureReason.MIN_MAX_BOUNDARY_HIT);
-        assertExecutionFailureReason("IVM: deleted row affects BITMAP aggregate",
-                IvmFailureReason.BITMAP_AGG_DELETE);
-        assertExecutionFailureReason("IVM fallback: delete on non-deterministic row_id",
-                IvmFailureReason.NON_DETERMINISTIC_ROW_ID);
-        assertExecutionFailureReason("executor failed",
-                IvmFailureReason.INCREMENTAL_EXECUTION_FAILED);
+    public void testManagerKeepsKnownExecutionFailureReason() {
+        assertKnownExecutionFailureReason(IvmFailureReason.MIN_MAX_BOUNDARY_HIT,
+                IvmFailureClassifier.MIN_MAX_BOUNDARY_MSG_PREFIX + ": deleted row may be current MIN value");
+        assertKnownExecutionFailureReason(IvmFailureReason.NON_DETERMINISTIC_ROW_ID,
+                IvmFailureClassifier.NON_DETERMINISTIC_ROW_ID_MSG_PREFIX + " in INNER_JOIN");
     }
 
     @Test
@@ -395,6 +391,21 @@ public class IvmRefreshManagerTest {
         Assertions.assertTrue(manager.persistCalls.get(0), "persist should have runningIvmRefresh=true");
     }
 
+    private void assertKnownExecutionFailureReason(IvmFailureReason expectedReason, String detail) {
+        MTMV mtmv = mockMtmv();
+        Command deltaWriteCommand = Mockito.mock(Command.class);
+        TestDeltaExecutor executor = new TestDeltaExecutor();
+        executor.failureMessage = detail;
+        TestIvmRefreshManager manager = new TestIvmRefreshManager(executor,
+                newContext(mtmv), makeCommands(deltaWriteCommand, mtmv));
+
+        IvmException exception = Assertions.assertThrows(IvmException.class,
+                () -> manager.doRefresh(mtmv));
+
+        Assertions.assertEquals(expectedReason, exception.getFailureReason());
+        Assertions.assertTrue(executor.executeCalled);
+    }
+
     @Test
     public void testEmptyBundlesDoNotWriteRunningIvmRefreshEditlog() {
         MTMV mtmv = mockMtmv();
@@ -535,26 +546,10 @@ public class IvmRefreshManagerTest {
         return Collections.singletonList(deltaWriteCommand);
     }
 
-    private static void assertExecutionFailureReason(String detail, IvmFailureReason expectedReason) {
-        MTMV mtmv = mockMtmv();
-        Command deltaWriteCommand = Mockito.mock(Command.class);
-        TestDeltaExecutor executor = new TestDeltaExecutor();
-        executor.throwOnExecute = true;
-        executor.executeErrorMessage = detail;
-        TestIvmRefreshManager manager = new TestIvmRefreshManager(executor,
-                newContext(mtmv), makeCommands(deltaWriteCommand, mtmv));
-
-        IvmRefreshResult result = manager.doRefresh(mtmv);
-
-        Assertions.assertFalse(result.isSuccess());
-        Assertions.assertEquals(expectedReason, result.getFailureReason());
-        Assertions.assertTrue(result.getDetailMessage().contains(detail));
-    }
-
     private static class TestDeltaExecutor extends IvmDeltaExecutor {
         private boolean executeCalled;
         private boolean throwOnExecute;
-        private String executeErrorMessage = "executor failed";
+        private String failureMessage;
         private List<Command> lastCommands;
 
         @Override
@@ -562,8 +557,9 @@ public class IvmRefreshManagerTest {
                 int exprIdStart) throws AnalysisException {
             executeCalled = true;
             lastCommands = commands;
-            if (throwOnExecute) {
-                throw new AnalysisException(executeErrorMessage);
+            if (throwOnExecute || failureMessage != null) {
+                String message = failureMessage != null ? failureMessage : "executor failed";
+                throw new AnalysisException(message);
             }
         }
     }

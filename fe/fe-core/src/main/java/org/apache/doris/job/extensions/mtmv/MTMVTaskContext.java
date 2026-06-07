@@ -60,15 +60,6 @@ public class MTMVTaskContext {
         this.allowFallback = true;
     }
 
-    public MTMVTaskContext(MTMVTaskTriggerMode triggerMode, List<String> partitions, RefreshMode refreshMode) {
-        this(triggerMode, partitions, refreshMode, defaultAllowFallback(refreshMode), null);
-    }
-
-    public MTMVTaskContext(MTMVTaskTriggerMode triggerMode, List<String> partitions, RefreshMode refreshMode,
-            boolean allowFallback) {
-        this(triggerMode, partitions, refreshMode, allowFallback, null);
-    }
-
     private MTMVTaskContext(MTMVTaskTriggerMode triggerMode, List<String> partitions, RefreshMode refreshMode,
             boolean allowFallback, String computeGroup) {
         this.triggerMode = triggerMode;
@@ -132,6 +123,11 @@ public class MTMVTaskContext {
         taskContext.allowFallback = null;
         taskContext.useMvDefaultRefreshPolicy = true;
         return taskContext;
+    }
+
+    public static MTMVTaskContext of(MTMVTaskTriggerMode triggerMode, List<String> partitions,
+            RefreshMode refreshMode) {
+        return new MTMVTaskContext(triggerMode, partitions, refreshMode, defaultAllowFallback(refreshMode), null);
     }
 
     public static MTMVTaskContext of(MTMVTaskTriggerMode triggerMode, List<String> partitions,

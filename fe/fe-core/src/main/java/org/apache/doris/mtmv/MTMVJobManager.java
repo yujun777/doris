@@ -68,7 +68,7 @@ public class MTMVJobManager implements MTMVHookService {
         if (!mtmv.getRefreshInfo().getBuildMode().equals(BuildMode.IMMEDIATE)) {
             return;
         }
-        MTMVTaskContext mtmvTaskContext = new MTMVTaskContext(MTMVTaskTriggerMode.SYSTEM, null,
+        MTMVTaskContext mtmvTaskContext = MTMVTaskContext.of(MTMVTaskTriggerMode.SYSTEM, null,
                 RefreshMode.COMPLETE);
         try {
             Env.getCurrentEnv().getJobManager().triggerJob(mtmv.getId(), mtmvTaskContext);

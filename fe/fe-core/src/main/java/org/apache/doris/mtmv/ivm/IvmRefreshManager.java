@@ -328,13 +328,11 @@ public class IvmRefreshManager {
             // require full refresh recovery, which resets the flag on success.
             // Do not return a fallback result here: delta commands are executed
             // one by one and may already have partially modified the MV.
-            // TODO(IVM): Classify known execution-time recovery cases such as
-            // MIN_MAX_BOUNDARY_HIT and NON_DETERMINISTIC_ROW_ID separately when
-            // full-refresh fallback is safe to start immediately.
             String detail = e.getMessage() != null ? e.getMessage()
                     : e.getClass().getName() + " (no message)";
             LOG.warn("IVM execution failed for mv={}, detail={}", mtmv.getName(), detail, e);
-            throw new IvmException(IvmFailureReason.INCREMENTAL_EXECUTION_FAILED, detail);
+            throw new IvmException(IvmFailureClassifier.classifyExecutionFailure(detail)
+                    .orElse(IvmFailureReason.INCREMENTAL_EXECUTION_FAILED), detail);
         }
 
         // Advance consumedTso to latestTso for all base tables and clear the flag,
@@ -342,19 +340,6 @@ public class IvmRefreshManager {
         advanceConsumedTsoAndClearFlag(mtmv);
 
         return IvmRefreshResult.success();
-    }
-
-    private IvmRefreshResult buildExecutionFailureResult(String detail) {
-        if (detail.contains("IVM: deleted row may be current")) {
-            return IvmRefreshResult.fallback(IvmFailureReason.MIN_MAX_BOUNDARY_HIT, detail);
-        }
-        if (detail.contains("IVM: deleted row affects BITMAP aggregate")) {
-            return IvmRefreshResult.fallback(IvmFailureReason.BITMAP_AGG_DELETE, detail);
-        }
-        if (detail.contains("IVM fallback: delete on non-deterministic row_id")) {
-            return IvmRefreshResult.fallback(IvmFailureReason.NON_DETERMINISTIC_ROW_ID, detail);
-        }
-        return IvmRefreshResult.fallback(IvmFailureReason.INCREMENTAL_EXECUTION_FAILED, detail);
     }
 
     /**
