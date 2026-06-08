@@ -74,6 +74,7 @@ import org.mockito.stubbing.Answer;
 import java.util.Collections;
 import java.util.List;
 import java.util.Set;
+import java.util.stream.Collectors;
 
 public class MTMVTaskTest {
     private String poneName = "p1";
@@ -175,6 +176,20 @@ public class MTMVTaskTest {
         MTMVTask task = new MTMVTask(mtmv, relation, context);
         List<String> result = task.calculateNeedRefreshPartitions(null);
         Assert.assertEquals(Lists.newArrayList(ptwoName), result);
+    }
+
+    @Test
+    public void testIncrementalFallbackOnNonIvmSkipsIvmAttempt() throws JobException {
+        Mockito.when(mtmv.isIvm()).thenReturn(false);
+        MTMVTaskContext context = MTMVTaskContext.of(MTMVTaskTriggerMode.MANUAL, null,
+                RefreshMode.INCREMENTAL, true, null);
+        MTMVTask task = new MTMVTask(mtmv, relation, context);
+
+        Object request = Deencapsulation.invoke(task, "resolveRefreshRequest");
+        List<?> attempts = Deencapsulation.invoke(task, "buildAttempts", request);
+
+        Assert.assertEquals(Lists.newArrayList("PARTITIONS", "COMPLETE"), attempts.stream()
+                .map(Object::toString).collect(Collectors.toList()));
     }
 
     @Test

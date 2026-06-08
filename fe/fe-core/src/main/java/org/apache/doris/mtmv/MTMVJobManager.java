@@ -47,7 +47,6 @@ import org.apache.doris.nereids.trees.plans.commands.info.RefreshMTMVInfo.Refres
 import org.apache.doris.nereids.trees.plans.commands.info.ResumeMTMVInfo;
 import org.apache.doris.qe.ConnectContext;
 
-import com.google.common.collect.Lists;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;

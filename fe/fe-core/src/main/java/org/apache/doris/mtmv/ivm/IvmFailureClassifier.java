@@ -17,8 +17,8 @@
 
 package org.apache.doris.mtmv.ivm;
 
-import java.util.Optional;
 import java.util.Objects;
+import java.util.Optional;
 
 /**
  * Maps runtime guard failures back to stable IVM failure reasons.
