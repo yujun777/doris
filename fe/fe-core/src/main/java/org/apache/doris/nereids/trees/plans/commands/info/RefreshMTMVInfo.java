@@ -32,6 +32,7 @@ import org.apache.doris.common.util.MetaLockUtils;
 import org.apache.doris.mtmv.MTMVPartitionInfo.MTMVPartitionType;
 import org.apache.doris.mtmv.MTMVPartitionUtil;
 import org.apache.doris.mtmv.MTMVRelatedTableIf;
+import org.apache.doris.mtmv.MTMVRefreshEnum.RefreshMethod;
 import org.apache.doris.mysql.privilege.PrivPredicate;
 import org.apache.doris.nereids.exceptions.AnalysisException;
 import org.apache.doris.nereids.util.Utils;
@@ -117,19 +118,51 @@ public class RefreshMTMVInfo {
             // expanded to a full refresh by fallback.
             throw new AnalysisException("partitionSpec does not support FALLBACK");
         }
-        boolean isIvm = mtmv.isIvm();
-        if (!isIvm && refreshMode == RefreshMode.INCREMENTAL && !allowFallback) {
-            throw new AnalysisException(
-                    "Cannot use " + refreshMode
-                            + " refresh on a materialized view without INCREMENTAL capability.");
+        RefreshMethod mvRefreshMethod = mtmv.getRefreshInfo() == null
+                ? null : mtmv.getRefreshInfo().getRefreshMethod();
+        if (mvRefreshMethod == null) {
+            throw new AnalysisException("Materialized view has unknown refresh method.");
         }
-        if (isIvm && !CollectionUtils.isEmpty(partitions)) {
+        if (!isRefreshModeCompatible(mtmv, mvRefreshMethod)) {
+            throw new AnalysisException("Cannot use " + refreshMode
+                    + " refresh on a materialized view with " + mvRefreshMethod + " refresh policy.");
+        }
+        if (mtmv.isIvm() && !CollectionUtils.isEmpty(partitions)) {
             // IVM MVs should not bypass incremental semantics through a legacy
             // partitionSpec. Users can explicitly choose the PARTITIONS keyword
             // when they want the partition-refresh strategy.
             throw new AnalysisException(
                     "partitionSpec is not allowed on a materialized view with INCREMENTAL capability, "
                             + "use PARTITIONS keyword instead.");
+        }
+    }
+
+    private boolean isRefreshModeCompatible(MTMV mtmv, RefreshMethod mvRefreshMethod) {
+        if (refreshMode == RefreshMode.AUTO) {
+            return false;
+        }
+        switch (mvRefreshMethod) {
+            case COMPLETE:
+                return refreshMode == RefreshMode.COMPLETE;
+            case PARTITIONS:
+                return refreshMode == RefreshMode.PARTITIONS || refreshMode == RefreshMode.COMPLETE;
+            case INCREMENTAL:
+                return refreshMode == RefreshMode.INCREMENTAL
+                        || refreshMode == RefreshMode.PARTITIONS
+                        || refreshMode == RefreshMode.COMPLETE;
+            case AUTO:
+                if (mtmv.isIvm()) {
+                    return refreshMode == RefreshMode.INCREMENTAL
+                            || refreshMode == RefreshMode.PARTITIONS
+                            || refreshMode == RefreshMode.COMPLETE;
+                }
+                if (mtmv.getMvPartitionInfo() != null
+                        && mtmv.getMvPartitionInfo().getPartitionType() != MTMVPartitionType.SELF_MANAGE) {
+                    return refreshMode == RefreshMode.PARTITIONS || refreshMode == RefreshMode.COMPLETE;
+                }
+                return refreshMode == RefreshMode.COMPLETE;
+            default:
+                throw new IllegalStateException("Unsupported refresh method: " + mvRefreshMethod);
         }
     }
 

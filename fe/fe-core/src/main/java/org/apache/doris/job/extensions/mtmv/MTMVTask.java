@@ -412,9 +412,7 @@ public class MTMVTask extends AbstractTask {
                 attempts.add(RefreshAttemptType.COMPLETE);
                 break;
             case INCREMENTAL:
-                if (mtmv.isIvm() || !request.allowFallback) {
-                    attempts.add(RefreshAttemptType.IVM);
-                }
+                attempts.add(RefreshAttemptType.IVM);
                 if (request.allowFallback) {
                     attempts.add(RefreshAttemptType.PARTITIONS);
                     attempts.add(RefreshAttemptType.COMPLETE);

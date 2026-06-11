@@ -179,7 +179,7 @@ public class MTMVTaskTest {
     }
 
     @Test
-    public void testIncrementalFallbackOnNonIvmSkipsIvmAttempt() throws JobException {
+    public void testIncrementalFallbackOnNonIvmKeepsIvmAttempt() throws JobException {
         Mockito.when(mtmv.isIvm()).thenReturn(false);
         MTMVTaskContext context = MTMVTaskContext.of(MTMVTaskTriggerMode.MANUAL, null,
                 RefreshMode.INCREMENTAL, true, null);
@@ -188,7 +188,7 @@ public class MTMVTaskTest {
         Object request = Deencapsulation.invoke(task, "resolveRefreshRequest");
         List<?> attempts = Deencapsulation.invoke(task, "buildAttempts", request);
 
-        Assert.assertEquals(Lists.newArrayList("PARTITIONS", "COMPLETE"), attempts.stream()
+        Assert.assertEquals(Lists.newArrayList("IVM", "PARTITIONS", "COMPLETE"), attempts.stream()
                 .map(Object::toString).collect(Collectors.toList()));
     }
 
