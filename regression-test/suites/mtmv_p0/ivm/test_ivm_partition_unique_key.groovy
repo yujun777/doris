@@ -129,7 +129,7 @@ suite("test_ivm_partition_unique_key") {
             )
             AS SELECT dt, id, v FROM t_ivm_partition_key_base;
         """
-        exception "distribution column must be key column"
+        exception "Distribution column[dt] is not key column"
     }
 
     // Invalid: aggregate IVM MVs with explicit keys must include every GROUP BY
