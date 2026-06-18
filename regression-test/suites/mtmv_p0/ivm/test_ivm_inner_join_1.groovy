@@ -71,7 +71,6 @@ suite("test_ivm_inner_join_1") {
     sql """
         CREATE MATERIALIZED VIEW ivm_ij1_basic_mv
         BUILD DEFERRED REFRESH INCREMENTAL ON MANUAL
-        DISTRIBUTED BY RANDOM BUCKETS 2
         PROPERTIES ('replication_num' = '1')
         AS
         SELECT
@@ -154,7 +153,6 @@ suite("test_ivm_inner_join_1") {
     sql """
         CREATE MATERIALIZED VIEW ivm_ij1_cross_mv
         BUILD DEFERRED REFRESH INCREMENTAL ON MANUAL
-        DISTRIBUTED BY RANDOM BUCKETS 2
         PROPERTIES ('replication_num' = '1')
         AS
         SELECT
@@ -234,7 +232,6 @@ suite("test_ivm_inner_join_1") {
     sql """
         CREATE MATERIALIZED VIEW ivm_ij1_unmatched_mv
         BUILD DEFERRED REFRESH INCREMENTAL ON MANUAL
-        DISTRIBUTED BY RANDOM BUCKETS 2
         PROPERTIES ('replication_num' = '1')
         AS
         SELECT
@@ -331,7 +328,6 @@ suite("test_ivm_inner_join_1") {
     sql """
         CREATE MATERIALIZED VIEW ivm_ij1_matched_mv
         BUILD DEFERRED REFRESH INCREMENTAL ON MANUAL
-        DISTRIBUTED BY RANDOM BUCKETS 2
         PROPERTIES ('replication_num' = '1')
         AS
         SELECT
@@ -441,7 +437,6 @@ suite("test_ivm_inner_join_1") {
     sql """
         CREATE MATERIALIZED VIEW ivm_ij1_nested_mv
         BUILD DEFERRED REFRESH INCREMENTAL ON MANUAL
-        DISTRIBUTED BY RANDOM BUCKETS 2
         PROPERTIES ('replication_num' = '1')
         AS
         SELECT
