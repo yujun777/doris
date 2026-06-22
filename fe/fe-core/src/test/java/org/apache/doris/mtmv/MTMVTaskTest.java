@@ -110,12 +110,14 @@ public class MTMVTaskTest {
         // result = poneId;
 
         mtmvPartitionUtilStatic.when(() -> MTMVPartitionUtil.isMTMVSync(Mockito.nullable(MTMVRefreshContext.class), Mockito.nullable(Set.class), Mockito.nullable(Set.class))).thenReturn(true);
+        mtmvPartitionUtilStatic.when(() -> MTMVPartitionUtil.getMTMVNeedRefreshPartitions(
+                Mockito.nullable(MTMVRefreshContext.class), Mockito.nullable(Set.class)))
+                .thenReturn(Lists.newArrayList());
 
         Mockito.when(mtmv.getRefreshInfo()).thenReturn(mtmvRefreshInfo);
 
         Mockito.when(mtmvRefreshInfo.getRefreshMethod()).thenReturn(RefreshMethod.COMPLETE);
 
-        Mockito.when(mtmv.hasCompleteRefreshSnapshot()).thenReturn(true);
         Mockito.when(mtmv.hasRefreshSnapshot()).thenReturn(true);
     }
 
@@ -160,25 +162,28 @@ public class MTMVTaskTest {
     }
 
     @Test
-    public void testCalculateNeedRefreshPartitionsSystemIncompleteRefreshSnapshot() throws AnalysisException, JobException {
+    public void testCalculateNeedRefreshPartitionsSystemAutoUsesPartitionDiff() throws AnalysisException, JobException {
         Mockito.when(mtmvRefreshInfo.getRefreshMethod()).thenReturn(RefreshMethod.AUTO);
-        Mockito.when(mtmv.hasCompleteRefreshSnapshot()).thenReturn(false);
+        mtmvPartitionUtilStatic.when(() -> MTMVPartitionUtil.isMTMVSync(
+                Mockito.nullable(MTMVRefreshContext.class), Mockito.nullable(Set.class),
+                Mockito.nullable(Set.class))).thenThrow(new AnalysisException("global sync failed"));
+        mtmvPartitionUtilStatic.when(() -> MTMVPartitionUtil.getMTMVNeedRefreshPartitions(
+                Mockito.nullable(MTMVRefreshContext.class), Mockito.nullable(Set.class)))
+                .thenReturn(Lists.newArrayList(ptwoName));
 
         MTMVTaskContext context = new MTMVTaskContext(MTMVTaskTriggerMode.SYSTEM);
         MTMVTask task = new MTMVTask(mtmv, relation, context);
         List<String> result = task.calculateNeedRefreshPartitions(null);
 
-        Assert.assertEquals(allPartitionNames, result);
+        Assert.assertEquals(Lists.newArrayList(ptwoName), result);
         mtmvPartitionUtilStatic.verify(() -> MTMVPartitionUtil.isMTMVSync(
-                Mockito.nullable(MTMVRefreshContext.class), Mockito.nullable(Set.class), Mockito.nullable(Set.class)),
-                Mockito.never());
+                Mockito.nullable(MTMVRefreshContext.class), Mockito.nullable(Set.class),
+                Mockito.nullable(Set.class)), Mockito.never());
     }
 
     @Test
-    public void testCalculateNeedRefreshPartitionsManualPartitionsIncompleteRefreshSnapshot()
+    public void testCalculateNeedRefreshPartitionsManualPartitionsKeepsExplicitScope()
             throws AnalysisException, JobException {
-        Mockito.when(mtmv.hasCompleteRefreshSnapshot()).thenReturn(false);
-
         MTMVTaskContext context = MTMVTaskContext.of(MTMVTaskTriggerMode.MANUAL, Lists.newArrayList(poneName),
                 RefreshMode.PARTITIONS, false, null);
         MTMVTask task = new MTMVTask(mtmv, relation, context);
@@ -197,9 +202,8 @@ public class MTMVTaskTest {
     }
 
     @Test
-    public void testCalculateNeedRefreshPartitionsSystemNotSyncAuto() throws AnalysisException, JobException {
-        mtmvPartitionUtilStatic.when(() -> MTMVPartitionUtil.isMTMVSync(Mockito.nullable(MTMVRefreshContext.class), Mockito.nullable(Set.class), Mockito.nullable(Set.class))).thenReturn(false);
-
+    public void testCalculateNeedRefreshPartitionsSystemAutoRefreshesNeededPartitions()
+            throws AnalysisException, JobException {
         Mockito.when(mtmvRefreshInfo.getRefreshMethod()).thenReturn(RefreshMethod.AUTO);
 
         mtmvPartitionUtilStatic.when(() -> MTMVPartitionUtil.getMTMVNeedRefreshPartitions(Mockito.nullable(MTMVRefreshContext.class), Mockito.nullable(Set.class))).thenReturn(Lists.newArrayList(ptwoName));
@@ -436,7 +440,6 @@ public class MTMVTaskTest {
     public void testExecuteIvmAttemptAllowsIncompletePctSnapshotWhenBaselineExists() throws Exception {
         Mockito.when(mtmv.isIvm()).thenReturn(true);
         Mockito.when(mtmv.getName()).thenReturn("test_mv");
-        Mockito.when(mtmv.hasCompleteRefreshSnapshot()).thenReturn(false);
         Mockito.when(mtmv.hasRefreshSnapshot()).thenReturn(true);
         MTMVTaskContext context = MTMVTaskContext.of(MTMVTaskTriggerMode.MANUAL, null, RefreshMode.INCREMENTAL);
         MTMVTask task = new MTMVTask(mtmv, relation, context);

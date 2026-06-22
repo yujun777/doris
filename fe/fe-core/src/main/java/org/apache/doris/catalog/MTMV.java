@@ -469,17 +469,6 @@ public class MTMV extends OlapTable {
         return refreshSnapshot;
     }
 
-    public boolean hasCompleteRefreshSnapshot() {
-        Set<String> partitionNames = getPartitionNames();
-        readMvLock();
-        try {
-            // A refresh baseline is complete only when every current MV partition has a snapshot.
-            return refreshSnapshot.getPartitionSnapshots().keySet().containsAll(partitionNames);
-        } finally {
-            readMvUnlock();
-        }
-    }
-
     public boolean hasRefreshSnapshot() {
         readMvLock();
         try {

@@ -451,9 +451,6 @@ public class MTMVTask extends AbstractTask {
             MTMVRefreshContext context = buildRefreshContext(tableIfs);
             return PartitionRefreshPlan.success(context, request.partitions);
         }
-        if (!mtmv.hasCompleteRefreshSnapshot()) {
-            return PartitionRefreshPlan.fallback("Refresh snapshot is incomplete; full refresh is required");
-        }
         if (mtmv.getMvPartitionInfo().getPartitionType() == MTMVPartitionType.SELF_MANAGE) {
             // Keep this inside the PARTITIONS attempt so PARTITIONS FALLBACK and
             // AUTO can still continue to COMPLETE for non-partitioned MVs.
@@ -467,16 +464,6 @@ public class MTMVTask extends AbstractTask {
             return PartitionRefreshPlan.fallback(e.getMessage());
         }
         MTMVRefreshContext context = buildRefreshContext(tableIfs);
-        boolean fresh;
-        try {
-            fresh = MTMVPartitionUtil.isMTMVSync(context, relation.getBaseTablesOneLevelAndFromView(),
-                    mtmv.getExcludedTriggerTables());
-        } catch (Exception e) {
-            return PartitionRefreshPlan.fallback(e.getMessage());
-        }
-        if (fresh) {
-            return PartitionRefreshPlan.success(context, Lists.newArrayList());
-        }
         try {
             return PartitionRefreshPlan.success(context,
                     MTMVPartitionUtil.getMTMVNeedRefreshPartitions(context,
@@ -1025,21 +1012,15 @@ public class MTMVTask extends AbstractTask {
         if (mtmv.getRefreshInfo().getRefreshMethod() == RefreshMethod.COMPLETE) {
             return Lists.newArrayList(mtmv.getPartitionNames());
         }
-        // An incomplete baseline cannot be checked by isMTMVSync, because the current exclude rules may
-        // skip the changed base tables and incorrectly mark the MV as fresh. Rebuild it with a full refresh.
-        if (!mtmv.hasCompleteRefreshSnapshot()) {
-            return Lists.newArrayList(mtmv.getPartitionNames());
-        }
-        // check if data is fresh
-        // We need to use a newly generated relationship and cannot retrieve it using mtmv.getRelation()
-        // to avoid rebuilding the baseTable and causing a change in the tableId
-        boolean fresh = MTMVPartitionUtil.isMTMVSync(context, relation.getBaseTablesOneLevelAndFromView(),
-                mtmv.getExcludedTriggerTables());
-        if (fresh) {
-            return Lists.newArrayList();
-        }
         // current, if partitionType is SELF_MANAGE, we can only FULL refresh
         if (mtmv.getMvPartitionInfo().getPartitionType() == MTMVPartitionType.SELF_MANAGE) {
+            // We need to use a newly generated relationship and cannot retrieve it using mtmv.getRelation()
+            // to avoid rebuilding the baseTable and causing a change in the tableId
+            boolean fresh = MTMVPartitionUtil.isMTMVSync(context, relation.getBaseTablesOneLevelAndFromView(),
+                    mtmv.getExcludedTriggerTables());
+            if (fresh) {
+                return Lists.newArrayList();
+            }
             return Lists.newArrayList(mtmv.getPartitionNames());
         }
         // We need to use a newly generated relationship and cannot retrieve it using mtmv.getRelation()

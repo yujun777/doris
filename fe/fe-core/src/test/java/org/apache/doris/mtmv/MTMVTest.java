@@ -312,7 +312,6 @@ public class MTMVTest {
         mtmv.setRefreshSnapshot(refreshSnapshot);
 
         Assert.assertTrue(mtmv.hasRefreshSnapshot());
-        Assert.assertFalse(mtmv.hasCompleteRefreshSnapshot());
     }
 
     @Test
