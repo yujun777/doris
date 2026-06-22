@@ -40,6 +40,7 @@ import org.apache.doris.nereids.trees.plans.PreAggStatus;
 import org.apache.doris.nereids.trees.plans.RelationId;
 import org.apache.doris.nereids.trees.plans.ScoreRangeInfo;
 import org.apache.doris.nereids.trees.plans.visitor.PlanVisitor;
+import org.apache.doris.nereids.util.Utils;
 
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.Maps;
@@ -106,7 +107,7 @@ public class LogicalOlapTableStreamScan extends LogicalOlapScan {
                 indexSelected, preAggStatus, specifiedPartitions, hints, cacheSlotWithSlotName, cachedOutput,
                 tableSample, directMvScan, colToSubPathsMap, specifiedTabletIds, operativeSlots, virtualColumns,
                 scoreOrderKeys, scoreLimit, scoreRangeInfo, annOrderKeys, annLimit, tableAlias,
-                partitionPrunablePredicates, scanParams, -1, false);
+                partitionPrunablePredicates, scanParams, -1);
         this.isNormalized = isNormalized;
         this.isIncrementalScan = isIncrementalScan;
     }
@@ -341,6 +342,14 @@ public class LogicalOlapTableStreamScan extends LogicalOlapScan {
                         manuallySpecifiedTabletIds, operativeSlots, virtualColumns, scoreOrderKeys, scoreLimit,
                         scoreRangeInfo, annOrderKeys, annLimit, tableAlias, partitionPrunablePredicates,
                         Optional.of(scanParams), isNormalized, isIncrementalScan));
+    }
+
+    @Override
+    public String toString() {
+        return Utils.toSqlStringSkipNull("LogicalOlapTableStreamScan[" + id.asInt() + "]",
+                "qualified", qualifiedName(),
+                "isNormalized", isNormalized,
+                "isIncrementalScan", isIncrementalScan);
     }
 
     @Override
