@@ -495,7 +495,7 @@ public class MTMVPlanUtil {
             mtmvPartitionDefinition.setFunctionCallExpression(new NereidsParser().parseExpression(
                     expr.accept(ExprToSqlVisitor.INSTANCE, ToSqlParams.WITH_TABLE)));
         }
-        List<String> keys = mtmv.getBaseSchema().stream()
+        List<String> keys = mtmv.getBaseSchema(false).stream()
                 .filter(Column::isKey)
                 .map(Column::getName)
                 .collect(Collectors.toList());
@@ -723,22 +723,18 @@ public class MTMVPlanUtil {
         }
 
         LinkedHashSet<String> finalKeys = new LinkedHashSet<>();
-        if (!CollectionUtils.isEmpty(keys)) {
+        boolean hasExplicitKeys = !CollectionUtils.isEmpty(keys);
+        if (hasExplicitKeys) {
             for (String key : keys) {
                 validateIvmKeyColumn(columnMap, key);
-                finalKeys.add(columnMap.get(key).getName());
-            }
-            validateIvmExplicitKeysCoverLayout(finalKeys, mvPartitionInfo);
-            validateIvmExplicitKeysForAggregate(finalKeys, ivmNormalizeResult);
-        } else {
-            if (mvPartitionInfo != null && mvPartitionInfo.getPartitionType() != MTMVPartitionType.SELF_MANAGE) {
-                validateIvmKeyColumn(columnMap, mvPartitionInfo.getPartitionCol());
-                finalKeys.add(columnMap.get(mvPartitionInfo.getPartitionCol()).getName());
+                addIvmFinalKey(finalKeys, columnMap.get(key).getName());
             }
         }
-        // User distribution is validated before CREATE rewrites the physical IVM distribution to row-id.
-        // It must not enlarge the final MOW key because row-id is the stable dedup identity.
-        finalKeys.add(Column.IVM_ROW_ID_COL);
+        addIvmPartitionKeyIfNeeded(finalKeys, columnMap, mvPartitionInfo);
+        if (hasExplicitKeys) {
+            validateIvmExplicitKeysForAggregate(finalKeys, ivmNormalizeResult);
+        }
+        addIvmFinalKey(finalKeys, Column.IVM_ROW_ID_COL);
 
         Set<String> finalKeySet = Sets.newTreeSet(String.CASE_INSENSITIVE_ORDER);
         finalKeySet.addAll(finalKeys);
@@ -763,6 +759,24 @@ public class MTMVPlanUtil {
         return Lists.newArrayList(finalKeys);
     }
 
+    private static void addIvmPartitionKeyIfNeeded(LinkedHashSet<String> finalKeys,
+            Map<String, ColumnDefinition> columnMap, MTMVPartitionInfo mvPartitionInfo) {
+        if (mvPartitionInfo == null || mvPartitionInfo.getPartitionType() == MTMVPartitionType.SELF_MANAGE) {
+            return;
+        }
+        if (mvPartitionInfo.getPartitionType() == MTMVPartitionType.EXPR) {
+            throw new AnalysisException("IVM materialized view only supports column partition");
+        }
+        validateIvmKeyColumn(columnMap, mvPartitionInfo.getPartitionCol());
+        addIvmFinalKey(finalKeys, columnMap.get(mvPartitionInfo.getPartitionCol()).getName());
+    }
+
+    private static void addIvmFinalKey(LinkedHashSet<String> finalKeys, String columnName) {
+        if (!containsIgnoreCase(finalKeys, columnName)) {
+            finalKeys.add(columnName);
+        }
+    }
+
     private static void validateIvmExplicitKeysForAggregate(Set<String> keySet,
             IvmNormalizeResult ivmNormalizeResult) {
         if (ivmNormalizeResult == null || !ivmNormalizeResult.isAggMv()) {
@@ -784,21 +798,13 @@ public class MTMVPlanUtil {
         }
     }
 
-    private static void validateIvmExplicitKeysCoverLayout(Set<String> keySet, MTMVPartitionInfo mvPartitionInfo) {
-        if (mvPartitionInfo != null && mvPartitionInfo.getPartitionType() != MTMVPartitionType.SELF_MANAGE
-                && !containsIgnoreCase(keySet, mvPartitionInfo.getPartitionCol())) {
-            throw new AnalysisException("IVM materialized view partition column must be key column: "
-                    + mvPartitionInfo.getPartitionCol());
-        }
-    }
-
     private static void validateIvmKeyColumn(Map<String, ColumnDefinition> columnMap, String columnName) {
         if (!columnMap.containsKey(columnName)) {
             throw new AnalysisException("IVM key column does not exist in MV output: " + columnName);
         }
         ColumnDefinition column = columnMap.get(columnName);
-        if (IvmUtil.isIvmHiddenColumn(column.getName()) && !Column.IVM_ROW_ID_COL.equals(column.getName())) {
-            throw new AnalysisException("IVM aggregate hidden column can not be key column: " + columnName);
+        if (IvmUtil.isIvmHiddenColumn(column.getName())) {
+            throw new AnalysisException("IVM hidden column can not be key column: " + columnName);
         }
     }
 

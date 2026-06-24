@@ -49,6 +49,7 @@ import org.apache.doris.mtmv.MTMVUtil;
 import org.apache.doris.mtmv.ivm.IvmException;
 import org.apache.doris.mtmv.ivm.IvmFailureReason;
 import org.apache.doris.mtmv.ivm.IvmPlanSignature;
+import org.apache.doris.mtmv.ivm.IvmUtil;
 import org.apache.doris.mysql.privilege.PrivPredicate;
 import org.apache.doris.nereids.CascadesContext;
 import org.apache.doris.nereids.StatementContext;
@@ -178,10 +179,11 @@ public class CreateMTMVInfo extends CreateTableInfo {
         columns.forEach(c -> columnMap.put(c.getName(), c));
         KeysType distributionKeysType = isEnableIvm() ? KeysType.UNIQUE_KEYS : KeysType.DUP_KEYS;
         if (isEnableIvm()) {
-            if (distribution != null) {
+            if (distribution != null && distribution.isHash()) {
                 validateUserDistributionForIvm(columnMap);
+            } else {
+                distribution = buildIvmRowIdDistribution(distribution);
             }
-            distribution = buildIvmRowIdDistribution(distribution);
         } else if (distribution == null) {
             distribution = new DistributionDescriptor(false, false, FeConstants.default_bucket_num, null);
         }
@@ -199,21 +201,23 @@ public class CreateMTMVInfo extends CreateTableInfo {
     }
 
     /**
-     * Validate the distribution written by the user before IVM replaces it with
-     * the hidden row-id distribution used by the physical MOW table.
+     * Validate the user HASH distribution after IVM final keys have been generated.
      */
     private void validateUserDistributionForIvm(Map<String, ColumnDefinition> columnMap) {
-        // Validate the user-visible distribution before IVM rewrites it to row-id,
-        // so invalid HASH columns and explicit RANDOM keep ordinary UNIQUE table semantics.
         distribution.validate(columnMap, KeysType.UNIQUE_KEYS);
+        for (String columnName : distribution.getCols()) {
+            ColumnDefinition column = columnMap.get(columnName);
+            if (IvmUtil.isIvmHiddenColumn(column.getName())) {
+                throw new AnalysisException("IVM hidden column can not be distribution column: " + columnName);
+            }
+        }
     }
 
     /**
-     * Build the physical IVM distribution. If the user supplied a distribution,
-     * keep only its bucket configuration; the hash key must always be row-id.
+     * Build the physical IVM row-id distribution for omitted or RANDOM user distribution.
      */
     private DistributionDescriptor buildIvmRowIdDistribution(DistributionDescriptor sourceDistribution) {
-        boolean isAutoBucket = sourceDistribution != null && sourceDistribution.isAutoBucket();
+        boolean isAutoBucket = sourceDistribution == null || sourceDistribution.isAutoBucket();
         int bucketNum = sourceDistribution == null ? FeConstants.default_bucket_num
                 : sourceDistribution.translateToCatalogStyle().getBuckets();
         return new DistributionDescriptor(true, isAutoBucket, bucketNum,

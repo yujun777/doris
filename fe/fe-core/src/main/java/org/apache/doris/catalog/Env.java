@@ -3847,21 +3847,10 @@ public class Env {
             addColNameAndComment(mtmv, sb, isIvm);
             sb.append("\n");
             sb.append(mtmv.getRefreshInfo());
-            if (!isIvm) {
-                addMTMVKeyInfo(mtmv, sb);
-            }
+            addMTMVKeyInfo(mtmv, sb, isIvm);
             addTableComment(mtmv, sb);
             addMTMVPartitionInfo(mtmv, sb);
-            // IVM internally rewrites distribution to HASH(__DORIS_IVM_ROW_ID_COL__),
-            // which is a hidden column invisible to users. SHOW CREATE must emit a
-            // logical, re-executable DDL, so it cannot expose the hidden row-id column.
-            // It also cannot emit RANDOM as a workaround because explicit RANDOM must
-            // fail ordinary UNIQUE table validation before IVM rewrites distribution.
-            // Omitting DISTRIBUTED BY makes replay enter the same default IVM rewrite.
-            if (!isIvm) {
-                DistributionInfo distributionInfo = mtmv.getDefaultDistributionInfo();
-                sb.append("\n").append(distributionInfo.toSql());
-            }
+            addMTMVDistributionInfo(mtmv, sb, isIvm);
             // properties
             sb.append("\nPROPERTIES (\n");
             addOlapTablePropertyInfo(mtmv, sb, false, false, null);
@@ -3875,18 +3864,41 @@ public class Env {
         }
     }
 
-    private static void addMTMVKeyInfo(MTMV mtmv, StringBuilder sb) {
-        if (!mtmv.isDuplicateWithoutKey()) {
+    private static void addMTMVKeyInfo(MTMV mtmv, StringBuilder sb, boolean filterIvmHiddenCols) {
+        if (!filterIvmHiddenCols && mtmv.isDuplicateWithoutKey()) {
+            return;
+        }
+        List<String> keysColumnNames = Lists.newArrayList();
+        List<Column> schema = filterIvmHiddenCols ? mtmv.getBaseSchema(true) : mtmv.getBaseSchema();
+        for (Column column : schema) {
+            if (column.isKey() && !(filterIvmHiddenCols && IvmUtil.isIvmHiddenColumn(column.getName()))) {
+                keysColumnNames.add("`" + column.getName() + "`");
+            }
+        }
+        if (!keysColumnNames.isEmpty()) {
             String keySql = mtmv.getKeysType().toSql();
             sb.append("\n").append(keySql).append("(");
-            List<String> keysColumnNames = Lists.newArrayList();
-            for (Column column : mtmv.getBaseSchema()) {
-                if (column.isKey()) {
-                    keysColumnNames.add("`" + column.getName() + "`");
-                }
-            }
             sb.append(Joiner.on(", ").join(keysColumnNames)).append(")");
         }
+    }
+
+    private static void addMTMVDistributionInfo(MTMV mtmv, StringBuilder sb, boolean isIvm) {
+        DistributionInfo distributionInfo = mtmv.getDefaultDistributionInfo();
+        if (isIvm && isIvmRowIdDistribution(distributionInfo)) {
+            sb.append("\n").append(new RandomDistributionInfo(
+                    distributionInfo.getBucketNum(), distributionInfo.getAutoBucket()).toSql());
+            return;
+        }
+        sb.append("\n").append(distributionInfo.toSql());
+    }
+
+    private static boolean isIvmRowIdDistribution(DistributionInfo distributionInfo) {
+        if (!(distributionInfo instanceof HashDistributionInfo)) {
+            return false;
+        }
+        List<Column> distributionColumns = ((HashDistributionInfo) distributionInfo).getDistributionColumns();
+        return distributionColumns.size() == 1
+                && Column.IVM_ROW_ID_COL.equalsIgnoreCase(distributionColumns.get(0).getName());
     }
 
     private static void addMTMVPartitionInfo(MTMV mtmv, StringBuilder sb) throws AnalysisException {

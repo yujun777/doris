@@ -32,10 +32,10 @@ import java.util.stream.Collectors;
  * PR-4: For IVM (INCREMENTAL) materialized views, the physical model uses
  * UNIQUE_KEYS + Merge-On-Write + hidden row-id columns internally. However,
  * SHOW CREATE should output a logical DDL that can be re-executed by users,
- * hiding all internal physical details:
- *   - No UNIQUE KEY(...) clause
+ * hiding internal row-id details:
+ *   - No hidden row-id key in UNIQUE KEY(...)
  *   - No hidden IVM columns anywhere in the DDL
- *   - No physical IVM DISTRIBUTED BY clause
+ *   - Internal row-id HASH distribution is shown as RANDOM
  *   - No enable_unique_key_merge_on_write property
  *   - REFRESH INCREMENTAL must appear correctly
  */
@@ -56,7 +56,7 @@ public class ShowCreateMTMVTest extends SqlTestBase {
                 + ")\n");
     }
 
-    // TC-4-1: INCREMENTAL MV SHOW CREATE must not contain UNIQUE KEY(...)
+    // TC-4-1: INCREMENTAL MV with only internal row-id key should not print UNIQUE KEY(...)
     @Test
     public void testShowCreateIncrementalMVNoUniqueKey() throws Exception {
         createMvByNereids("create materialized view mv_show_ivm_no_uk "
@@ -86,8 +86,8 @@ public class ShowCreateMTMVTest extends SqlTestBase {
 
         Assertions.assertFalse(ddl.contains("__DORIS_IVM_"),
                 "IVM SHOW CREATE should not contain any __DORIS_IVM_ columns, but got:\n" + ddl);
-        Assertions.assertFalse(ddl.contains("DISTRIBUTED BY"),
-                "IVM SHOW CREATE should omit physical distribution, but got:\n" + ddl);
+        Assertions.assertTrue(ddl.contains("DISTRIBUTED BY RANDOM BUCKETS AUTO"),
+                "IVM SHOW CREATE should show default row-id distribution as RANDOM AUTO, but got:\n" + ddl);
     }
 
     // TC-4-3: INCREMENTAL MV SHOW CREATE must contain REFRESH INCREMENTAL
@@ -146,10 +146,28 @@ public class ShowCreateMTMVTest extends SqlTestBase {
                 "Replayable DDL must not contain MOW property:\n" + ddl);
         Assertions.assertFalse(ddl.contains("__DORIS_IVM_"),
                 "Replayable DDL must not contain IVM hidden columns:\n" + ddl);
-        Assertions.assertFalse(ddl.contains("DISTRIBUTED BY"),
-                "Replayable DDL must omit IVM physical distribution:\n" + ddl);
+        Assertions.assertTrue(ddl.contains("DISTRIBUTED BY RANDOM BUCKETS AUTO"),
+                "Replayable DDL should show row-id distribution as RANDOM AUTO:\n" + ddl);
         Assertions.assertTrue(ddl.contains("REFRESH INCREMENTAL"),
                 "Replayable DDL must contain REFRESH INCREMENTAL:\n" + ddl);
+    }
+
+    @Test
+    public void testShowCreateIncrementalMVRandomBuckets() throws Exception {
+        createMvByNereids("create materialized view mv_show_ivm_random_buckets "
+                + "BUILD DEFERRED REFRESH INCREMENTAL ON MANUAL\n"
+                + "DISTRIBUTED BY RANDOM BUCKETS 8\n"
+                + "PROPERTIES ('replication_num' = '1')\n"
+                + "as select * from test.show_create_ivm_base;");
+
+        Database db = Env.getCurrentEnv().getInternalCatalog().getDbOrAnalysisException("test");
+        MTMV mtmv = (MTMV) db.getTableOrAnalysisException("mv_show_ivm_random_buckets");
+        String ddl = Env.getMTMVDdl(mtmv);
+
+        Assertions.assertFalse(ddl.contains("__DORIS_IVM_"),
+                "IVM SHOW CREATE should not expose row-id distribution:\n" + ddl);
+        Assertions.assertTrue(ddl.contains("DISTRIBUTED BY RANDOM BUCKETS 8"),
+                "IVM SHOW CREATE should preserve user RANDOM bucket count:\n" + ddl);
     }
 
     // TC-4-6: Even with show_hidden_columns=true, IVM row-id should not be exposed in SHOW CREATE
@@ -221,13 +239,13 @@ public class ShowCreateMTMVTest extends SqlTestBase {
         MTMV mtmv1 = (MTMV) db.getTableOrAnalysisException("mv_show_ivm_roundtrip_1");
         String ddl1 = Env.getMTMVDdl(mtmv1);
 
-        // Step 2: verify DDL omits physical IVM distribution. The internal row-id
-        // distribution cannot be replayed because row-id is hidden from user DDL,
-        // and RANDOM is an invalid explicit distribution for IVM UNIQUE tables.
+        // Step 2: verify DDL preserves user-visible key/distribution without exposing row-id.
         Assertions.assertFalse(ddl1.contains("__DORIS_IVM_"),
                 "DDL should not expose IVM hidden columns, but got:\n" + ddl1);
-        Assertions.assertFalse(ddl1.contains("DISTRIBUTED BY"),
-                "DDL should omit IVM physical distribution, but got:\n" + ddl1);
+        Assertions.assertTrue(ddl1.contains("UNIQUE KEY(`id`)"),
+                "DDL should contain visible key columns without row-id:\n" + ddl1);
+        Assertions.assertTrue(ddl1.contains("DISTRIBUTED BY HASH(`id`) BUCKETS 3"),
+                "DDL should preserve user HASH distribution:\n" + ddl1);
 
         // Step 3: use DDL to create a second MV (replace the name).
         String ddl2Sql = ddl1.replace("mv_show_ivm_roundtrip_1", "mv_show_ivm_roundtrip_2");
@@ -270,7 +288,7 @@ public class ShowCreateMTMVTest extends SqlTestBase {
         Assertions.assertEquals(cols1, cols2,
                 "Visible schema columns should match after roundtrip");
 
-        // Step 7: all should have HASH distribution internally (IVM rewrites to HASH(row-id)).
+        // Step 7: all should have HASH distribution internally.
         Assertions.assertEquals(DistributionInfo.DistributionInfoType.HASH,
                 mtmv1.getDefaultDistributionInfo().getType(),
                 "MV1 internal distribution should be HASH");
