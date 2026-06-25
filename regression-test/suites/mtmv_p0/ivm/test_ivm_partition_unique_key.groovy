@@ -16,11 +16,12 @@
 // under the License.
 
 suite("test_ivm_partition_unique_key") {
-    // This suite verifies that IVM MVs build the final UNIQUE/MOW layout before
-    // validating partition and distribution constraints.
+    // This suite verifies that IVM MVs build a replayable logical layout while
+    // still satisfying ordinary UNIQUE/MOW partition and distribution rules.
     sql """drop materialized view if exists mv_ivm_partition_key;"""
     sql """drop materialized view if exists mv_ivm_partition_auto_key;"""
     sql """drop materialized view if exists mv_ivm_partition_hash_partition_col;"""
+    sql """drop materialized view if exists mv_ivm_partition_bad_key;"""
     sql """drop materialized view if exists mv_ivm_partition_bad_expr;"""
     sql """drop materialized view if exists mv_ivm_partition_bad_dist;"""
     sql """drop materialized view if exists mv_ivm_partition_bad_agg_key;"""
@@ -54,14 +55,14 @@ suite("test_ivm_partition_unique_key") {
             (3, '2026-06-02', 30);
     """
 
-    // A valid explicit-key case: IVM adds the explicit partition column dt to
-    // the final key before validating the physical MOW table.
+    // A valid explicit-key case: the explicit partition column dt is already a
+    // key column, and RANDOM distribution is rewritten to internal row-id HASH.
     sql """
         CREATE MATERIALIZED VIEW mv_ivm_partition_key
         BUILD DEFERRED REFRESH INCREMENTAL ON MANUAL
-        KEY(id)
+        KEY(id, dt)
         PARTITION BY(dt)
-        DISTRIBUTED BY HASH(id) BUCKETS 2
+        DISTRIBUTED BY RANDOM BUCKETS 2
         PROPERTIES (
             'replication_num' = '1'
         )
@@ -99,12 +100,11 @@ suite("test_ivm_partition_unique_key") {
     waitingMTMVTaskFinishedByMvName("mv_ivm_partition_auto_key")
     order_qt_auto_key_complete """SELECT dt, id, v FROM mv_ivm_partition_auto_key"""
 
-    // Valid: dt is not in the user key, but explicit PARTITION BY(dt) adds it
-    // to the final key, so HASH(dt) is legal after IVM final-key generation.
+    // Valid: no user key is specified, so explicit PARTITION BY(dt) and
+    // DISTRIBUTED BY HASH(dt) both contribute to the generated key.
     sql """
         CREATE MATERIALIZED VIEW mv_ivm_partition_hash_partition_col
         BUILD DEFERRED REFRESH INCREMENTAL ON MANUAL
-        KEY(id)
         PARTITION BY(dt)
         DISTRIBUTED BY HASH(dt) BUCKETS 2
         PROPERTIES (
@@ -113,14 +113,32 @@ suite("test_ivm_partition_unique_key") {
         AS SELECT dt, id, v FROM t_ivm_partition_key_base;
     """
 
+    // Invalid: when the user explicitly writes KEY(id), IVM will not add the
+    // partition column dt into that explicit key. The ordinary MOW partition
+    // rule rejects this contradiction.
+    test {
+        sql """
+            CREATE MATERIALIZED VIEW mv_ivm_partition_bad_key
+            BUILD DEFERRED REFRESH INCREMENTAL ON MANUAL
+            KEY(id)
+            PARTITION BY(dt)
+            DISTRIBUTED BY RANDOM BUCKETS 2
+            PROPERTIES (
+                'replication_num' = '1'
+            )
+            AS SELECT dt, id, v FROM t_ivm_partition_key_base;
+        """
+        exception "partition column must be key column"
+    }
+
     // Invalid: IVM only supports direct column partition in this scheme.
     test {
         sql """
             CREATE MATERIALIZED VIEW mv_ivm_partition_bad_expr
             BUILD DEFERRED REFRESH INCREMENTAL ON MANUAL
-            KEY(id)
+            KEY(id, dt)
             PARTITION BY(date_trunc(dt, 'month'))
-            DISTRIBUTED BY HASH(id) BUCKETS 2
+            DISTRIBUTED BY RANDOM BUCKETS 2
             PROPERTIES (
                 'replication_num' = '1'
             )

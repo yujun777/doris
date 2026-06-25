@@ -16,10 +16,10 @@
 // under the License.
 
 suite("test_ivm_agg_3") {
-    // IVM MVs are UNIQUE_KEYS (MOW) tables. Explicit RANDOM must fail ordinary
-    // UNIQUE table validation; explicit HASH is only valid when user keys cover
-    // the hash columns. These refresh tests omit distribution intentionally and
-    // let IVM rewrite it to HASH(__DORIS_IVM_ROW_ID_COL__).
+    // IVM MVs are created as internal UNIQUE_KEYS (MOW) tables. Omitted
+    // distribution and user RANDOM distribution are rewritten to internal
+    // HASH(__DORIS_IVM_ROW_ID_COL__); explicit HASH must satisfy ordinary
+    // UNIQUE key validation.
 
     // =========================================================
     // Part 10: Multiple group keys — GROUP BY k1, k2
