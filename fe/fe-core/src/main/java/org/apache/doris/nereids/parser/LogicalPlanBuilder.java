@@ -1645,7 +1645,7 @@ public class LogicalPlanBuilder extends DorisParserBaseVisitor<Object> {
         if (ctx.HASH() != null) {
             desc = new DistributionDescriptor(true, ctx.AUTO() != null, bucketNum,
                     visitIdentifierList(ctx.hashKeys));
-        } else if (ctx.RANDOM() != null || ctx.BUCKETS() != null || ctx.AUTO() != null) {
+        } else if (ctx.RANDOM() != null) {
             desc = new DistributionDescriptor(false, ctx.AUTO() != null || ctx.BUCKETS() == null, bucketNum, null);
         }
 
