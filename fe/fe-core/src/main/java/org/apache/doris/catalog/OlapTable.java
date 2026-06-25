@@ -2425,6 +2425,13 @@ public class OlapTable extends Table implements MTMVRelatedTableIf, GsonPostProc
         boolean needHistoricalValue = getBinlogConfig().getNeedHistoricalValue();
         List<Column> beforeColumns = new ArrayList<>();
 
+        if (this instanceof MTMV && ((MTMV) this).isIvm()) {
+            Column rowIdColumn = getColumn(Column.IVM_ROW_ID_COL);
+            Preconditions.checkState(rowIdColumn != null,
+                    "IVM row binlog schema requires row id column: " + getName());
+            tableRowBinlogSchema.add(Column.generateRowBinlogKeyColumn(rowIdColumn));
+        }
+
         for (Column column : getBaseSchema(false)) {
             Preconditions.checkState(!column.getType().isVariantType(),
                     "binlog<Row> does not support VARIANT column: " + column.getName());

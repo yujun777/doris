@@ -15,9 +15,12 @@
 // specific language governing permissions and limitations
 // under the License.
 
+#include <limits>
+
 #include "storage/binlog.h"
 #include "storage/segment/historical_row_retriever.h"
 #include "storage/segment/segment_writer.h"
+
 namespace doris {
 
 namespace segment_v2 {
@@ -29,7 +32,7 @@ public:
 
     ~RowBinlogSourceDataWriter();
 
-    Status init();
+    Status init(const TabletSchemaSPtr& binlog_tablet_schema);
 
     Status prepare_by_source_block(const Block* block, size_t row_pos, size_t num_rows,
                                    std::vector<uint32_t>& partial_source_cids,
@@ -53,16 +56,30 @@ public:
 
     std::unique_ptr<OlapBlockDataConvertor>& olap_data_convertor() { return _olap_data_convertor; }
 
-    void filter_source_ids(std::vector<uint32_t>& full_cids, std::vector<uint32_t>& res_cids) {
-        res_cids.reserve(full_cids.size());
-        std::set_intersection(_normal_column_ids.begin(), _normal_column_ids.end(),
-                              full_cids.begin(), full_cids.end(), std::back_inserter(res_cids));
-    }
+    // Number of source columns written to the row-binlog normal/AFTER area.
+    size_t normal_column_count() const;
+
+    // Return the converted source column by row-binlog normal/AFTER ordinal.
+    IOlapColumnDataAccessor* get_converted_normal_column(uint32_t ordinal);
+
+    // Translate a source column id to its ordinal in the row-binlog normal/AFTER area.
+    uint32_t normal_ordinal(uint32_t source_cid) const;
+
+    // Keep only source column ids that are present in the row-binlog normal/AFTER area.
+    void filter_source_ids(const std::vector<uint32_t>& full_cids,
+                           std::vector<uint32_t>& res_cids) const;
 
 private:
+    static constexpr uint32_t INVALID_ORDINAL = std::numeric_limits<uint32_t>::max();
+
+    // Return whether the source column is present in the row-binlog normal/AFTER area.
+    bool has_normal_column(uint32_t source_cid) const;
+
     const SegmentWriteBinlogOptions& _opt;
     std::unique_ptr<OlapBlockDataConvertor> _olap_data_convertor;
     std::vector<uint32_t> _normal_column_ids;
+    std::vector<uint32_t> _source_cid_to_ordinal;
+    std::vector<uint32_t> _source_key_column_ids;
     std::vector<IOlapColumnDataAccessor*> _converted_columns;
     size_t _num_rows = 0;
 
