@@ -1017,6 +1017,64 @@ public class CreateMTMVCommandTest extends TestWithFeService {
     }
 
     @Test
+    public void testIvmAggregateExplicitKeyMayUseGroupKeySubset() throws Exception {
+        createTable("create table test.ivm_agg_subset_key_base (id int, dt date, v1 int)\n"
+                + "duplicate key(id, dt)\n"
+                + "distributed by hash(id) buckets 1\n"
+                + "properties('replication_num' = '1', 'binlog.enable' = 'true', 'binlog.format' = 'ROW');");
+
+        CreateMTMVInfo info = getPartitionTableInfo(
+                "CREATE MATERIALIZED VIEW ivm_agg_subset_key_mv\n"
+                + " BUILD DEFERRED REFRESH INCREMENTAL ON MANUAL\n"
+                + " KEY(id)\n"
+                + " DISTRIBUTED BY HASH(id) BUCKETS 2\n"
+                + " PROPERTIES ('replication_num' = '1')\n"
+                + " AS\n"
+                + " SELECT dt, id, SUM(v1) AS total FROM ivm_agg_subset_key_base GROUP BY dt, id;");
+
+        Assertions.assertEquals(Arrays.asList("id", Column.IVM_ROW_ID_COL), keyNames(info));
+    }
+
+    @Test
+    public void testIvmRejectsGeneratedAggregateResultKeyFromHashDistribution() throws Exception {
+        createTable("create table test.ivm_agg_hash_result_key_base (id int, dt date, v1 int)\n"
+                + "duplicate key(id, dt)\n"
+                + "distributed by hash(id) buckets 1\n"
+                + "properties('replication_num' = '1', 'binlog.enable' = 'true', 'binlog.format' = 'ROW');");
+
+        AnalysisException ex = Assertions.assertThrows(AnalysisException.class, () -> getPartitionTableInfo(
+                "CREATE MATERIALIZED VIEW ivm_agg_hash_result_key_mv\n"
+                + " BUILD DEFERRED REFRESH INCREMENTAL ON MANUAL\n"
+                + " DISTRIBUTED BY HASH(total) BUCKETS 2\n"
+                + " PROPERTIES ('replication_num' = '1')\n"
+                + " AS\n"
+                + " SELECT dt, id, SUM(v1) AS total FROM ivm_agg_hash_result_key_base GROUP BY dt, id;"));
+
+        Assertions.assertTrue(ex.getMessage().contains("aggregate result column"),
+                "unexpected message: " + ex.getMessage());
+    }
+
+    @Test
+    public void testIvmRejectsDerivedAggregateResultKey() throws Exception {
+        createTable("create table test.ivm_agg_derived_result_key_base (id int, dt date, v1 int)\n"
+                + "duplicate key(id, dt)\n"
+                + "distributed by hash(id) buckets 1\n"
+                + "properties('replication_num' = '1', 'binlog.enable' = 'true', 'binlog.format' = 'ROW');");
+
+        AnalysisException ex = Assertions.assertThrows(AnalysisException.class, () -> getPartitionTableInfo(
+                "CREATE MATERIALIZED VIEW ivm_agg_derived_result_key_mv\n"
+                + " BUILD DEFERRED REFRESH INCREMENTAL ON MANUAL\n"
+                + " KEY(total)\n"
+                + " PROPERTIES ('replication_num' = '1')\n"
+                + " AS\n"
+                + " SELECT dt, id, SUM(v1) + 1000 AS total "
+                + "FROM ivm_agg_derived_result_key_base GROUP BY dt, id;"));
+
+        Assertions.assertTrue(ex.getMessage().contains("aggregate result column"),
+                "unexpected message: " + ex.getMessage());
+    }
+
+    @Test
     public void testIvmPartitionColumnAddedForGeneratedKeyBeforeHashDistributionValidation() throws Exception {
         createTable("create table test.ivm_partition_auto_key_dist_base (id int, dt date, v1 int)\n"
                 + "duplicate key(id, dt)\n"

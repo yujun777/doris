@@ -3847,7 +3847,7 @@ public class Env {
             addColNameAndComment(mtmv, sb, isIvm);
             sb.append("\n");
             sb.append(mtmv.getRefreshInfo());
-            addMTMVKeyInfo(mtmv, sb, isIvm);
+            addMTMVKeyInfo(mtmv, sb);
             addTableComment(mtmv, sb);
             addMTMVPartitionInfo(mtmv, sb);
             addMTMVDistributionInfo(mtmv, sb, isIvm);
@@ -3864,19 +3864,18 @@ public class Env {
         }
     }
 
-    private static void addMTMVKeyInfo(MTMV mtmv, StringBuilder sb, boolean filterIvmHiddenCols) {
-        if (!filterIvmHiddenCols && mtmv.isDuplicateWithoutKey()) {
+    private static void addMTMVKeyInfo(MTMV mtmv, StringBuilder sb) {
+        if (mtmv.isDuplicateWithoutKey()) {
             return;
         }
         List<String> keysColumnNames = Lists.newArrayList();
-        List<Column> schema = filterIvmHiddenCols ? mtmv.getBaseSchema(true) : mtmv.getBaseSchema();
-        for (Column column : schema) {
-            if (column.isKey() && !(filterIvmHiddenCols && IvmUtil.isIvmHiddenColumn(column.getName()))) {
+        for (Column column : mtmv.getBaseSchema(false)) {
+            if (column.isKey()) {
                 keysColumnNames.add("`" + column.getName() + "`");
             }
         }
         if (!keysColumnNames.isEmpty()) {
-            String keySql = filterIvmHiddenCols ? "KEY" : mtmv.getKeysType().toSql();
+            String keySql = mtmv.isIvm() ? "KEY" : mtmv.getKeysType().toSql();
             sb.append("\n").append(keySql).append("(");
             sb.append(Joiner.on(", ").join(keysColumnNames)).append(")");
         }

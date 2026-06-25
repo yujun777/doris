@@ -51,7 +51,6 @@ import org.apache.doris.mtmv.MTMVPartitionInfo.MTMVPartitionType;
 import org.apache.doris.mtmv.ivm.IvmNormalizeResult;
 import org.apache.doris.mtmv.ivm.IvmUtil;
 import org.apache.doris.mtmv.ivm.agg.IvmAggMeta;
-import org.apache.doris.mtmv.ivm.agg.IvmAggTarget;
 import org.apache.doris.nereids.NereidsPlanner;
 import org.apache.doris.nereids.StatementContext;
 import org.apache.doris.nereids.analyzer.UnboundResultSink;
@@ -734,10 +733,8 @@ public class MTMVPlanUtil {
             addIvmPartitionKeyIfNeeded(finalKeys, columnMap, mvPartitionInfo);
             addIvmHashDistributionKeysIfNeeded(finalKeys, columnMap, distribution);
         }
-        if (hasExplicitKeys) {
-            validateIvmExplicitKeysForAggregate(finalKeys, ivmNormalizeResult);
-        }
         addIvmFinalKey(finalKeys, Column.IVM_ROW_ID_COL);
+        validateIvmAggregateKeys(finalKeys, ivmNormalizeResult);
 
         Set<String> finalKeySet = Sets.newTreeSet(String.CASE_INSENSITIVE_ORDER);
         finalKeySet.addAll(finalKeys);
@@ -804,23 +801,20 @@ public class MTMVPlanUtil {
         }
     }
 
-    private static void validateIvmExplicitKeysForAggregate(Set<String> keySet,
-            IvmNormalizeResult ivmNormalizeResult) {
+    private static void validateIvmAggregateKeys(Set<String> keySet, IvmNormalizeResult ivmNormalizeResult) {
         if (ivmNormalizeResult == null || !ivmNormalizeResult.isAggMv()) {
             return;
         }
         IvmAggMeta aggMeta = ivmNormalizeResult.getAggMeta();
+        Set<String> groupKeyNames = Sets.newTreeSet(String.CASE_INSENSITIVE_ORDER);
         for (Slot groupKey : aggMeta.getGroupKeySlots()) {
-            if (!containsIgnoreCase(keySet, groupKey.getName())) {
-                throw new AnalysisException("IVM aggregate materialized view key must contain group key column: "
-                        + groupKey.getName());
-            }
+            groupKeyNames.add(groupKey.getName());
         }
-        for (IvmAggTarget target : aggMeta.getAggTargets()) {
-            if (containsIgnoreCase(keySet, target.getVisibleSlot().getName())) {
+        for (String key : keySet) {
+            if (!IvmUtil.isIvmHiddenColumn(key) && !groupKeyNames.contains(key)) {
                 throw new AnalysisException(
                         "IVM aggregate materialized view key can not contain aggregate result column: "
-                        + target.getVisibleSlot().getName());
+                        + key);
             }
         }
     }

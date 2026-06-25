@@ -142,8 +142,6 @@ public class ShowCreateMTMVTest extends SqlTestBase {
         String ddl = Env.getMTMVDdl(mtmv);
 
         // The DDL should not contain physical details that would cause re-execution to fail.
-        Assertions.assertFalse(ddl.contains("UNIQUE KEY"),
-                "Replayable DDL must not contain UNIQUE KEY:\n" + ddl);
         Assertions.assertFalse(ddl.contains("enable_unique_key_merge_on_write"),
                 "Replayable DDL must not contain MOW property:\n" + ddl);
         Assertions.assertFalse(ddl.contains("__DORIS_IVM_"),
@@ -152,6 +150,8 @@ public class ShowCreateMTMVTest extends SqlTestBase {
                 "Replayable DDL should show row-id distribution as RANDOM AUTO:\n" + ddl);
         Assertions.assertTrue(ddl.contains("REFRESH INCREMENTAL"),
                 "Replayable DDL must contain REFRESH INCREMENTAL:\n" + ddl);
+
+        createMvByNereids(ddl.replace("mv_show_ivm_replay", "mv_show_ivm_replay_copy"));
     }
 
     @Test
@@ -187,8 +187,6 @@ public class ShowCreateMTMVTest extends SqlTestBase {
 
         Assertions.assertFalse(ddl.contains("__DORIS_IVM_"),
                 "IVM SHOW CREATE should not expose row-id distribution:\n" + ddl);
-        Assertions.assertFalse(ddl.contains("UNIQUE KEY"),
-                "Replayable IVM SHOW CREATE should not use UNIQUE KEY:\n" + ddl);
         Assertions.assertTrue(ddl.contains("KEY(`id`)"),
                 "IVM SHOW CREATE should keep the user-visible key:\n" + ddl);
         Assertions.assertTrue(ddl.contains("DISTRIBUTED BY RANDOM BUCKETS 8"),

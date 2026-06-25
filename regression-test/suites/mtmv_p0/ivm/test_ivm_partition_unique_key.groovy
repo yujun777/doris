@@ -24,7 +24,8 @@ suite("test_ivm_partition_unique_key") {
     sql """drop materialized view if exists mv_ivm_partition_bad_key;"""
     sql """drop materialized view if exists mv_ivm_partition_bad_expr;"""
     sql """drop materialized view if exists mv_ivm_partition_bad_dist;"""
-    sql """drop materialized view if exists mv_ivm_partition_bad_agg_key;"""
+    sql """drop materialized view if exists mv_ivm_partition_agg_key_subset;"""
+    sql """drop materialized view if exists mv_ivm_partition_bad_agg_dist_key;"""
     sql """drop materialized view if exists mv_ivm_partition_bad_agg_value_key;"""
     sql """drop table if exists t_ivm_partition_key_base;"""
 
@@ -163,20 +164,32 @@ suite("test_ivm_partition_unique_key") {
         exception "Distribution column[dt] is not key column"
     }
 
-    // Invalid: aggregate IVM MVs with explicit keys must include every GROUP BY
-    // output column because the MV row identity is the full aggregate group.
+    // Valid: aggregate IVM MOW key may use a stable group-key subset because
+    // row-id is the full group-key hash.
+    sql """
+        CREATE MATERIALIZED VIEW mv_ivm_partition_agg_key_subset
+        BUILD DEFERRED REFRESH INCREMENTAL ON MANUAL
+        KEY(id)
+        DISTRIBUTED BY HASH(id) BUCKETS 2
+        PROPERTIES (
+            'replication_num' = '1'
+        )
+        AS SELECT dt, id, SUM(v) AS total_v FROM t_ivm_partition_key_base GROUP BY dt, id;
+    """
+
+    // Invalid: generated keys from HASH distribution also cannot include
+    // aggregate result columns.
     test {
         sql """
-            CREATE MATERIALIZED VIEW mv_ivm_partition_bad_agg_key
+            CREATE MATERIALIZED VIEW mv_ivm_partition_bad_agg_dist_key
             BUILD DEFERRED REFRESH INCREMENTAL ON MANUAL
-            KEY(id)
-            DISTRIBUTED BY HASH(id) BUCKETS 2
+            DISTRIBUTED BY HASH(total_v) BUCKETS 2
             PROPERTIES (
                 'replication_num' = '1'
             )
             AS SELECT dt, id, SUM(v) AS total_v FROM t_ivm_partition_key_base GROUP BY dt, id;
         """
-        exception "group key column"
+        exception "aggregate result column"
     }
 
     // Invalid: aggregate result values are mutable state, so they cannot be
