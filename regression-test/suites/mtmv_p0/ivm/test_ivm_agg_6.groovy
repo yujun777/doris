@@ -19,6 +19,7 @@ import org.awaitility.Awaitility
 import static java.util.concurrent.TimeUnit.SECONDS
 
 suite("test_ivm_agg_6") {
+
     // =========================================================
     // MIN/MAX count-drop-to-zero — incremental NULL transition
     //

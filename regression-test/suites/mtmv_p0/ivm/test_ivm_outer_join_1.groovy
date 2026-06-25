@@ -16,6 +16,7 @@
 // under the License.
 
 suite("test_ivm_outer_join_1") {
+
     // =========================================================
     // Part 1: MOW x MOW left outer join - retained-side delta and null-side row repair
     // =========================================================

@@ -19,6 +19,7 @@ import org.awaitility.Awaitility
 import static java.util.concurrent.TimeUnit.SECONDS
 
 suite("test_ivm_agg_5") {
+
     // =========================================================
     // Part 1: Bare GROUP BY without aggregate functions (SELECT DISTINCT)
     // Covers: insert new group, partial delete (group survives), full group deletion.

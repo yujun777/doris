@@ -16,6 +16,7 @@
 // under the License.
 
 suite("test_ivm_outer_join_2") {
+
     // =========================================================
     // Part 1: O2 left-deep LEFT OUTER JOIN chain.
     // The lower LEFT JOIN is on the retained side of the upper LEFT JOIN, so this shape is allowed.

@@ -16,6 +16,7 @@
 // under the License.
 
 suite("test_ivm_inner_join_2") {
+
     // =========================================================
     // Part 6: Join with expression in project
     // =========================================================

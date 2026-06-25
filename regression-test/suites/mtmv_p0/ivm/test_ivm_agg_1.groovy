@@ -19,6 +19,7 @@ import org.awaitility.Awaitility
 import static java.util.concurrent.TimeUnit.SECONDS
 
 suite("test_ivm_agg_1") {
+
     // =========================================================
     // Part 1: Grouped aggregate MV (COUNT + SUM)
     // =========================================================

@@ -16,6 +16,7 @@
 // under the License.
 
 suite("test_ivm_agg_3") {
+
     // =========================================================
     // Part 10: Multiple group keys — GROUP BY k1, k2
     //          Tests composite row_id = hash(k1, k2) and multi-column grouping

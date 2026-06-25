@@ -19,6 +19,7 @@ import org.awaitility.Awaitility
 import static java.util.concurrent.TimeUnit.SECONDS
 
 suite("test_ivm_union_2") {
+
     // =========================================================
     // Part 6: MOW + DUP UNION ALL — mixed determinism, insert-only is fine
     //

@@ -19,6 +19,7 @@ import org.awaitility.Awaitility
 import static java.util.concurrent.TimeUnit.SECONDS
 
 suite("test_ivm_agg_2") {
+
     // =========================================================
     // Part 6: Scalar agg MV with all-NULL values + binlog_op
     //         Tests SUM/AVG/COUNT(expr)/MIN/MAX when every value is NULL

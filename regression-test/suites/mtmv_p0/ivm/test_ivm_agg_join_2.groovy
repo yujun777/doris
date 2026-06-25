@@ -19,6 +19,7 @@ import org.awaitility.Awaitility
 import static java.util.concurrent.TimeUnit.SECONDS
 
 suite("test_ivm_agg_join_2") {
+
     // =========================================================
     // Part 6: One-to-many join multiplicity in aggregation
     // =========================================================

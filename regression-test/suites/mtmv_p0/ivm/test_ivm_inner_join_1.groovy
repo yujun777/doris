@@ -19,6 +19,7 @@ import org.awaitility.Awaitility
 import static java.util.concurrent.TimeUnit.SECONDS
 
 suite("test_ivm_inner_join_1") {
+
     // =========================================================
     // Part 1: MOW x MOW inner join — two successive INCREMENTAL refreshes
     // =========================================================

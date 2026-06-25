@@ -16,6 +16,7 @@
 // under the License.
 
 suite("test_ivm_union_1") {
+
     // =========================================================
     // Part 1: Basic UNION ALL (MOW + MOW) — insert into both arms
     // =========================================================

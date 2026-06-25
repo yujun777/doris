@@ -16,6 +16,7 @@
 // under the License.
 
 suite("test_ivm_agg_join_3") {
+
     // =========================================================
     // Part 11: Root agg over DUP x MOW join with delete on MOW side
     // =========================================================

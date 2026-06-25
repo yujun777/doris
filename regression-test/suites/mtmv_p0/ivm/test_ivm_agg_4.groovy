@@ -16,6 +16,7 @@
 // under the License.
 
 suite("test_ivm_agg_4") {
+
     // =========================================================
     // Part 15: Expressions in agg arguments — SUM(v1 + v2), MIN(v1 * 2)
     //          IVM supports complex expressions inside agg functions.

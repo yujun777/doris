@@ -16,6 +16,7 @@
 // under the License.
 
 suite("test_ivm_agg_outer_join_1") {
+
     // =========================================================
     // O2 root aggregate above a LEFT OUTER JOIN chain.
     // =========================================================

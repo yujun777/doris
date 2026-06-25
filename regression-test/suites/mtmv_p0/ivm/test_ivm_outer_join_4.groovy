@@ -16,6 +16,7 @@
 // under the License.
 
 suite("test_ivm_outer_join_4") {
+
     // =========================================================
     // Part 1: FULL OUTER JOIN incremental refresh under the current mock-full-scan delta.
     // Covers unmatched rows retained by either side. When a later row makes an old

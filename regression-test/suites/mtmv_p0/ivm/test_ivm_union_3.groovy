@@ -19,6 +19,7 @@ import org.awaitility.Awaitility
 import static java.util.concurrent.TimeUnit.SECONDS
 
 suite("test_ivm_union_3") {
+
     // =========================================================
     // Part 11: Nested UNION ALL — (a UNION ALL b) UNION ALL c
     // Verifies incremental refresh propagates correctly through nested UNION.

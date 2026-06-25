@@ -16,6 +16,7 @@
 // under the License.
 
 suite("test_ivm_outer_join_3") {
+
     // =========================================================
     // Part 1: RIGHT OUTER JOIN null-side delta with pure hash conjuncts.
     // =========================================================
