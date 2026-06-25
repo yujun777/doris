@@ -57,6 +57,7 @@ suite("test_ivm_agg_5") {
     sql """
         CREATE MATERIALIZED VIEW test_ivm_agg_bare_grpby_mv
         BUILD DEFERRED REFRESH INCREMENTAL ON MANUAL
+        DISTRIBUTED BY RANDOM BUCKETS 2
         PROPERTIES (
             'replication_num' = '1'
         )
@@ -157,6 +158,7 @@ suite("test_ivm_agg_5") {
     sql """
         CREATE MATERIALIZED VIEW test_ivm_agg_bare_multikey_mv
         BUILD DEFERRED REFRESH INCREMENTAL ON MANUAL
+        DISTRIBUTED BY RANDOM BUCKETS 2
         PROPERTIES (
             'replication_num' = '1'
         )

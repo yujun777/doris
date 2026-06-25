@@ -63,6 +63,7 @@ suite("test_ivm_agg_join_2") {
     sql """
         CREATE MATERIALIZED VIEW ivm_aj2_p6_mv
         BUILD DEFERRED REFRESH INCREMENTAL ON MANUAL
+        DISTRIBUTED BY RANDOM BUCKETS 2
         PROPERTIES ('replication_num' = '1')
         AS
         SELECT ivm_aj2_p6_parent.pname AS pname,
@@ -133,6 +134,7 @@ suite("test_ivm_agg_join_2") {
     sql """
         CREATE MATERIALIZED VIEW ivm_aj2_p7_mv
         BUILD DEFERRED REFRESH INCREMENTAL ON MANUAL
+        DISTRIBUTED BY RANDOM BUCKETS 2
         PROPERTIES ('replication_num' = '1')
         AS
         SELECT ivm_aj2_p7_t1.jk AS jk,
@@ -202,6 +204,7 @@ suite("test_ivm_agg_join_2") {
     sql """
         CREATE MATERIALIZED VIEW ivm_aj2_p8_mv
         BUILD DEFERRED REFRESH INCREMENTAL ON MANUAL
+        DISTRIBUTED BY RANDOM BUCKETS 2
         PROPERTIES ('replication_num' = '1')
         AS
         SELECT ivm_aj2_p8_t1.grp AS grp,
@@ -289,6 +292,7 @@ suite("test_ivm_agg_join_2") {
     sql """
         CREATE MATERIALIZED VIEW ivm_aj2_p9_mv
         BUILD DEFERRED REFRESH INCREMENTAL ON MANUAL
+        DISTRIBUTED BY RANDOM BUCKETS 2
         PROPERTIES ('replication_num' = '1')
         AS
         SELECT ivm_aj2_p9_t1.k1 AS k1,
@@ -361,6 +365,7 @@ suite("test_ivm_agg_join_2") {
     sql """
         CREATE MATERIALIZED VIEW ivm_aj2_p10_mv
         BUILD DEFERRED REFRESH INCREMENTAL ON MANUAL
+        DISTRIBUTED BY RANDOM BUCKETS 2
         PROPERTIES ('replication_num' = '1')
         AS
         SELECT ivm_aj2_p10_t1.grp AS grp,

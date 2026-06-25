@@ -51,6 +51,7 @@ suite("test_ivm_dup_keys_mtmv") {
     sql """
         CREATE MATERIALIZED VIEW test_ivm_dup_keys_mtmv_mv
         BUILD DEFERRED REFRESH INCREMENTAL ON MANUAL
+        DISTRIBUTED BY RANDOM BUCKETS 2
         PROPERTIES (
             'replication_num' = '1'
         )

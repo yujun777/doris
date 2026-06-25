@@ -57,6 +57,7 @@ suite("test_ivm_agg_3") {
     sql """
         CREATE MATERIALIZED VIEW ivm_agg_multikey_mv
         BUILD DEFERRED REFRESH INCREMENTAL ON MANUAL
+        DISTRIBUTED BY RANDOM BUCKETS 2
         PROPERTIES (
             'replication_num' = '1'
         )
@@ -158,6 +159,7 @@ suite("test_ivm_agg_3") {
     sql """
         CREATE MATERIALIZED VIEW ivm_agg_multiagg_mv
         BUILD DEFERRED REFRESH INCREMENTAL ON MANUAL
+        DISTRIBUTED BY RANDOM BUCKETS 2
         PROPERTIES (
             'replication_num' = '1'
         )
@@ -232,6 +234,7 @@ suite("test_ivm_agg_3") {
     sql """
         CREATE MATERIALIZED VIEW ivm_agg_negval_mv
         BUILD DEFERRED REFRESH INCREMENTAL ON MANUAL
+        DISTRIBUTED BY RANDOM BUCKETS 2
         PROPERTIES (
             'replication_num' = '1'
         )
@@ -312,6 +315,7 @@ suite("test_ivm_agg_3") {
     sql """
         CREATE MATERIALIZED VIEW ivm_agg_emptydelta_mv
         BUILD DEFERRED REFRESH INCREMENTAL ON MANUAL
+        DISTRIBUTED BY RANDOM BUCKETS 2
         PROPERTIES (
             'replication_num' = '1'
         )
@@ -365,6 +369,7 @@ suite("test_ivm_agg_3") {
     sql """
         CREATE MATERIALIZED VIEW ivm_agg_types_mv
         BUILD DEFERRED REFRESH INCREMENTAL ON MANUAL
+        DISTRIBUTED BY RANDOM BUCKETS 2
         PROPERTIES (
             'replication_num' = '1'
         )
