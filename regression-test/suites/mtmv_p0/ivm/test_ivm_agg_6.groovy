@@ -19,11 +19,6 @@ import org.awaitility.Awaitility
 import static java.util.concurrent.TimeUnit.SECONDS
 
 suite("test_ivm_agg_6") {
-    // IVM MVs are created as internal UNIQUE_KEYS (MOW) tables. Omitted
-    // distribution and user RANDOM distribution are rewritten to internal
-    // HASH(__DORIS_IVM_ROW_ID_COL__); explicit HASH must satisfy ordinary
-    // UNIQUE key validation.
-
     // =========================================================
     // MIN/MAX count-drop-to-zero — incremental NULL transition
     //

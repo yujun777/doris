@@ -16,11 +16,6 @@
 // under the License.
 
 suite("test_ivm_agg_outer_join_1") {
-    // IVM MVs are created as internal UNIQUE_KEYS (MOW) tables. Omitted
-    // distribution and user RANDOM distribution are rewritten to internal
-    // HASH(__DORIS_IVM_ROW_ID_COL__); explicit HASH must satisfy ordinary
-    // UNIQUE key validation.
-
     // =========================================================
     // O2 root aggregate above a LEFT OUTER JOIN chain.
     // =========================================================

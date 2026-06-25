@@ -16,11 +16,6 @@
 // under the License.
 
 suite("test_ivm_agg_4") {
-    // IVM MVs are created as internal UNIQUE_KEYS (MOW) tables. Omitted
-    // distribution and user RANDOM distribution are rewritten to internal
-    // HASH(__DORIS_IVM_ROW_ID_COL__); explicit HASH must satisfy ordinary
-    // UNIQUE key validation.
-
     // =========================================================
     // Part 15: Expressions in agg arguments — SUM(v1 + v2), MIN(v1 * 2)
     //          IVM supports complex expressions inside agg functions.

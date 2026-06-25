@@ -16,10 +16,6 @@
 // under the License.
 
 suite("test_ivm_excluded_trigger_table", "mtmv") {
-    // IVM MVs are created as internal UNIQUE_KEYS (MOW) tables. Omitted
-    // distribution and user RANDOM distribution are rewritten to internal
-    // HASH(__DORIS_IVM_ROW_ID_COL__); explicit HASH must satisfy ordinary
-    // UNIQUE key validation.
     sql """drop materialized view if exists test_ivm_excluded_trigger_table_mv;"""
     sql """drop table if exists test_ivm_excluded_trigger_table_agg_base;"""
 

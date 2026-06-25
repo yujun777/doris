@@ -16,10 +16,6 @@
 // under the License.
 
 suite("test_ivm_repeat_1") {
-    // IVM MVs are created as internal UNIQUE_KEYS (MOW) tables. Omitted
-    // distribution and user RANDOM distribution are rewritten to internal
-    // HASH(__DORIS_IVM_ROW_ID_COL__); explicit HASH must satisfy ordinary
-    // UNIQUE key validation.
     sql """drop materialized view if exists test_ivm_repeat_1_mv;"""
     sql """drop table if exists test_ivm_repeat_1_t;"""
 

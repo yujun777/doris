@@ -16,11 +16,6 @@
 // under the License.
 
 suite("test_ivm_outer_join_3") {
-    // IVM MVs are created as internal UNIQUE_KEYS (MOW) tables. Omitted
-    // distribution and user RANDOM distribution are rewritten to internal
-    // HASH(__DORIS_IVM_ROW_ID_COL__); explicit HASH must satisfy ordinary
-    // UNIQUE key validation.
-
     // =========================================================
     // Part 1: RIGHT OUTER JOIN null-side delta with pure hash conjuncts.
     // =========================================================
