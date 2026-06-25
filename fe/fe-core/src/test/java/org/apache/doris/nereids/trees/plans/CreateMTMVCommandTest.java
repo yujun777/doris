@@ -53,6 +53,7 @@ import org.mockito.Mockito;
 
 import java.lang.reflect.Field;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.stream.Collectors;
 
@@ -74,6 +75,13 @@ public class CreateMTMVCommandTest extends TestWithFeService {
 
     private void resetStatementContext(String sql) {
         connectContext.setStatementContext(new StatementContext(connectContext, new OriginStatement(sql, 0)));
+    }
+
+    private static List<String> keyNames(CreateMTMVInfo info) {
+        return info.getColumns().stream()
+                .filter(Column::isKey)
+                .map(Column::getName)
+                .collect(Collectors.toList());
     }
 
     @Test
@@ -767,6 +775,7 @@ public class CreateMTMVCommandTest extends TestWithFeService {
         Assertions.assertEquals(Column.IVM_ROW_ID_COL, info.getDistribution().getCols().get(0));
         Assertions.assertEquals(3, info.getDistribution().translateToCatalogStyle().getBuckets());
         Assertions.assertFalse(info.getDistribution().isAutoBucket());
+        Assertions.assertEquals(Arrays.asList(Column.IVM_ROW_ID_COL), keyNames(info));
     }
 
     @Test
@@ -788,6 +797,50 @@ public class CreateMTMVCommandTest extends TestWithFeService {
         Assertions.assertEquals(Column.IVM_ROW_ID_COL, info.getDistribution().getCols().get(0));
         Assertions.assertTrue(info.getDistribution().isAutoBucket());
         Assertions.assertEquals("true", info.getProperties().get(PropertyAnalyzer.PROPERTIES_AUTO_BUCKET));
+        Assertions.assertEquals(Arrays.asList(Column.IVM_ROW_ID_COL), keyNames(info));
+    }
+
+    @Test
+    public void testIvmExplicitKeyRandomDistributionForcedToHashOnRowId() throws Exception {
+        createTable("create table test.ivm_explicit_key_random_dist_base (k1 int, v1 int)\n"
+                + "duplicate key(k1)\n"
+                + "distributed by hash(k1) buckets 1\n"
+                + "properties('replication_num' = '1', 'binlog.enable' = 'true', 'binlog.format' = 'ROW');");
+
+        CreateMTMVInfo info = getPartitionTableInfo(
+                "CREATE MATERIALIZED VIEW ivm_explicit_key_random_dist_mv\n"
+                + " BUILD DEFERRED REFRESH INCREMENTAL ON MANUAL\n"
+                + " KEY(k1)\n"
+                + " DISTRIBUTED BY RANDOM\n"
+                + " PROPERTIES ('replication_num' = '1')\n"
+                + " AS\n"
+                + " SELECT k1, v1 FROM ivm_explicit_key_random_dist_base;");
+
+        Assertions.assertTrue(info.getDistribution().isHash());
+        Assertions.assertEquals(Column.IVM_ROW_ID_COL, info.getDistribution().getCols().get(0));
+        Assertions.assertTrue(info.getDistribution().isAutoBucket());
+        Assertions.assertEquals(Arrays.asList("k1", Column.IVM_ROW_ID_COL), keyNames(info));
+    }
+
+    @Test
+    public void testIvmExplicitKeyDefaultDistributionForcedToHashOnRowId() throws Exception {
+        createTable("create table test.ivm_explicit_key_default_dist_base (k1 int, v1 int)\n"
+                + "duplicate key(k1)\n"
+                + "distributed by hash(k1) buckets 1\n"
+                + "properties('replication_num' = '1', 'binlog.enable' = 'true', 'binlog.format' = 'ROW');");
+
+        CreateMTMVInfo info = getPartitionTableInfo(
+                "CREATE MATERIALIZED VIEW ivm_explicit_key_default_dist_mv\n"
+                + " BUILD DEFERRED REFRESH INCREMENTAL ON MANUAL\n"
+                + " KEY(k1)\n"
+                + " PROPERTIES ('replication_num' = '1')\n"
+                + " AS\n"
+                + " SELECT k1, v1 FROM ivm_explicit_key_default_dist_base;");
+
+        Assertions.assertTrue(info.getDistribution().isHash());
+        Assertions.assertEquals(Column.IVM_ROW_ID_COL, info.getDistribution().getCols().get(0));
+        Assertions.assertTrue(info.getDistribution().isAutoBucket());
+        Assertions.assertEquals(Arrays.asList("k1", Column.IVM_ROW_ID_COL), keyNames(info));
     }
 
     @Test
@@ -811,6 +864,7 @@ public class CreateMTMVCommandTest extends TestWithFeService {
         Assertions.assertEquals(Column.IVM_ROW_ID_COL, info.getDistribution().getCols().get(0));
         Assertions.assertTrue(info.getDistribution().isAutoBucket());
         Assertions.assertEquals("true", info.getProperties().get(PropertyAnalyzer.PROPERTIES_AUTO_BUCKET));
+        Assertions.assertEquals(Arrays.asList(Column.IVM_ROW_ID_COL), keyNames(info));
     }
 
     @Test
@@ -832,25 +886,49 @@ public class CreateMTMVCommandTest extends TestWithFeService {
         Assertions.assertTrue(info.getDistribution().isHash());
         Assertions.assertEquals(1, info.getDistribution().getCols().size());
         Assertions.assertEquals("k1", info.getDistribution().getCols().get(0));
+        Assertions.assertEquals(Arrays.asList("k1", Column.IVM_ROW_ID_COL), keyNames(info));
     }
 
     @Test
-    public void testIvmMvRejectsHashDistributionWithoutUserKeyBeforeRewrite() throws Exception {
+    public void testIvmMvHashDistributionWithoutUserKeyGeneratesKey() throws Exception {
         createTable("create table test.ivm_dist_hash_no_key_base (k1 int, v1 int)\n"
                 + "duplicate key(k1)\n"
                 + "distributed by hash(k1) buckets 1\n"
                 + "properties('replication_num' = '1', 'binlog.enable' = 'true', 'binlog.format' = 'ROW');");
 
-        AnalysisException ex = Assertions.assertThrows(AnalysisException.class, () -> getPartitionTableInfo(
+        CreateMTMVInfo info = getPartitionTableInfo(
                 "CREATE MATERIALIZED VIEW ivm_dist_hash_no_key_mv\n"
                 + " BUILD DEFERRED REFRESH INCREMENTAL ON MANUAL\n"
                 + " DISTRIBUTED BY HASH(k1) BUCKETS 4\n"
                 + " PROPERTIES ('replication_num' = '1')\n"
                 + " AS\n"
-                + " SELECT k1, v1 FROM ivm_dist_hash_no_key_base;"));
+                + " SELECT k1, v1 FROM ivm_dist_hash_no_key_base;");
 
-        Assertions.assertTrue(ex.getMessage().contains("Distribution column[k1] is not key column"),
-                "unexpected message: " + ex.getMessage());
+        Assertions.assertTrue(info.getDistribution().isHash());
+        Assertions.assertEquals("k1", info.getDistribution().getCols().get(0));
+        Assertions.assertEquals(4, info.getDistribution().translateToCatalogStyle().getBuckets());
+        Assertions.assertEquals(Arrays.asList("k1", Column.IVM_ROW_ID_COL), keyNames(info));
+    }
+
+    @Test
+    public void testIvmMvMultiHashDistributionWithoutUserKeyGeneratesKeys() throws Exception {
+        createTable("create table test.ivm_dist_multi_hash_no_key_base (k1 int, v1 int)\n"
+                + "duplicate key(k1)\n"
+                + "distributed by hash(k1) buckets 1\n"
+                + "properties('replication_num' = '1', 'binlog.enable' = 'true', 'binlog.format' = 'ROW');");
+
+        CreateMTMVInfo info = getPartitionTableInfo(
+                "CREATE MATERIALIZED VIEW ivm_dist_multi_hash_no_key_mv\n"
+                + " BUILD DEFERRED REFRESH INCREMENTAL ON MANUAL\n"
+                + " DISTRIBUTED BY HASH(k1, v1) BUCKETS 4\n"
+                + " PROPERTIES ('replication_num' = '1')\n"
+                + " AS\n"
+                + " SELECT k1, v1 FROM ivm_dist_multi_hash_no_key_base;");
+
+        Assertions.assertTrue(info.getDistribution().isHash());
+        Assertions.assertEquals(Arrays.asList("k1", "v1"), info.getDistribution().getCols());
+        Assertions.assertEquals(4, info.getDistribution().translateToCatalogStyle().getBuckets());
+        Assertions.assertEquals(Arrays.asList("k1", "v1", Column.IVM_ROW_ID_COL), keyNames(info));
     }
 
     @Test
@@ -893,14 +971,14 @@ public class CreateMTMVCommandTest extends TestWithFeService {
     }
 
     @Test
-    public void testIvmPartitionColumnAddedBeforeHashDistributionValidation() throws Exception {
+    public void testIvmRejectsExplicitKeyHashDistributionOnPartitionNonKey() throws Exception {
         createTable("create table test.ivm_partition_dist_base (id int, dt date, v1 int)\n"
                 + "duplicate key(id, dt)\n"
                 + "partition by range(dt) (partition p202601 values [('2026-01-01'), ('2026-02-01')))\n"
                 + "distributed by hash(id) buckets 1\n"
                 + "properties('replication_num' = '1', 'binlog.enable' = 'true', 'binlog.format' = 'ROW');");
 
-        CreateMTMVInfo info = getPartitionTableInfo(
+        AnalysisException ex = Assertions.assertThrows(AnalysisException.class, () -> getPartitionTableInfo(
                 "CREATE MATERIALIZED VIEW ivm_partition_dist_mv\n"
                 + " BUILD DEFERRED REFRESH INCREMENTAL ON MANUAL\n"
                 + " KEY(id)\n"
@@ -908,17 +986,148 @@ public class CreateMTMVCommandTest extends TestWithFeService {
                 + " DISTRIBUTED BY HASH(dt) BUCKETS 2\n"
                 + " PROPERTIES ('replication_num' = '1')\n"
                 + " AS\n"
-                + " SELECT id, dt, v1 FROM ivm_partition_dist_base;");
+                + " SELECT id, dt, v1 FROM ivm_partition_dist_base;"));
+
+        Assertions.assertTrue(ex.getMessage().contains("Distribution column[dt] is not key column"),
+                "unexpected message: " + ex.getMessage());
+    }
+
+    @Test
+    public void testIvmExplicitKeyPartitionAndHashDistributionValid() throws Exception {
+        createTable("create table test.ivm_partition_explicit_key_hash_base (id int, dt date, v1 int)\n"
+                + "duplicate key(id, dt)\n"
+                + "partition by range(dt) (partition p202601 values [('2026-01-01'), ('2026-02-01')))\n"
+                + "distributed by hash(id) buckets 1\n"
+                + "properties('replication_num' = '1', 'binlog.enable' = 'true', 'binlog.format' = 'ROW');");
+
+        CreateMTMVInfo info = getPartitionTableInfo(
+                "CREATE MATERIALIZED VIEW ivm_partition_explicit_key_hash_mv\n"
+                + " BUILD DEFERRED REFRESH INCREMENTAL ON MANUAL\n"
+                + " KEY(id, dt)\n"
+                + " PARTITION BY(dt)\n"
+                + " DISTRIBUTED BY HASH(id) BUCKETS 2\n"
+                + " PROPERTIES ('replication_num' = '1')\n"
+                + " AS\n"
+                + " SELECT id, dt, v1 FROM ivm_partition_explicit_key_hash_base;");
 
         Assertions.assertTrue(info.getDistribution().isHash());
-        Assertions.assertEquals("dt", info.getDistribution().getCols().get(0));
-        List<String> keyNames = info.getColumns().stream()
-                .filter(Column::isKey)
-                .map(Column::getName)
-                .collect(Collectors.toList());
-        Assertions.assertTrue(keyNames.contains("id"));
-        Assertions.assertTrue(keyNames.contains("dt"));
-        Assertions.assertTrue(keyNames.contains(Column.IVM_ROW_ID_COL));
+        Assertions.assertEquals("id", info.getDistribution().getCols().get(0));
+        Assertions.assertEquals(2, info.getDistribution().translateToCatalogStyle().getBuckets());
+        Assertions.assertEquals(Arrays.asList("id", "dt", Column.IVM_ROW_ID_COL), keyNames(info));
+    }
+
+    @Test
+    public void testIvmPartitionColumnAddedForGeneratedKeyBeforeHashDistributionValidation() throws Exception {
+        createTable("create table test.ivm_partition_auto_key_dist_base (id int, dt date, v1 int)\n"
+                + "duplicate key(id, dt)\n"
+                + "partition by range(dt) (partition p202601 values [('2026-01-01'), ('2026-02-01')))\n"
+                + "distributed by hash(id) buckets 1\n"
+                + "properties('replication_num' = '1', 'binlog.enable' = 'true', 'binlog.format' = 'ROW');");
+
+        CreateMTMVInfo info = getPartitionTableInfo(
+                "CREATE MATERIALIZED VIEW ivm_partition_auto_key_dist_mv\n"
+                + " BUILD DEFERRED REFRESH INCREMENTAL ON MANUAL\n"
+                + " PARTITION BY(dt)\n"
+                + " DISTRIBUTED BY HASH(id) BUCKETS 2\n"
+                + " PROPERTIES ('replication_num' = '1')\n"
+                + " AS\n"
+                + " SELECT id, dt, v1 FROM ivm_partition_auto_key_dist_base;");
+
+        Assertions.assertTrue(info.getDistribution().isHash());
+        Assertions.assertEquals("id", info.getDistribution().getCols().get(0));
+        Assertions.assertEquals(Arrays.asList("dt", "id", Column.IVM_ROW_ID_COL), keyNames(info));
+    }
+
+    @Test
+    public void testIvmPartitionWithoutUserKeyUsesPartitionAndRowIdKeys() throws Exception {
+        createTable("create table test.ivm_partition_only_auto_key_base (id int, dt date, v1 int)\n"
+                + "duplicate key(id, dt)\n"
+                + "partition by range(dt) (partition p202601 values [('2026-01-01'), ('2026-02-01')))\n"
+                + "distributed by hash(id) buckets 1\n"
+                + "properties('replication_num' = '1', 'binlog.enable' = 'true', 'binlog.format' = 'ROW');");
+
+        CreateMTMVInfo info = getPartitionTableInfo(
+                "CREATE MATERIALIZED VIEW ivm_partition_only_auto_key_mv\n"
+                + " BUILD DEFERRED REFRESH INCREMENTAL ON MANUAL\n"
+                + " PARTITION BY(dt)\n"
+                + " PROPERTIES ('replication_num' = '1')\n"
+                + " AS\n"
+                + " SELECT id, dt, v1 FROM ivm_partition_only_auto_key_base;");
+
+        Assertions.assertTrue(info.getDistribution().isHash());
+        Assertions.assertEquals(Column.IVM_ROW_ID_COL, info.getDistribution().getCols().get(0));
+        Assertions.assertTrue(info.getDistribution().isAutoBucket());
+        Assertions.assertEquals(Arrays.asList("dt", Column.IVM_ROW_ID_COL), keyNames(info));
+    }
+
+    @Test
+    public void testIvmPartitionWithoutUserKeyRandomDistributionUsesPartitionAndRowIdKeys() throws Exception {
+        createTable("create table test.ivm_partition_random_auto_key_base (id int, dt date, v1 int)\n"
+                + "duplicate key(id, dt)\n"
+                + "partition by range(dt) (partition p202601 values [('2026-01-01'), ('2026-02-01')))\n"
+                + "distributed by hash(id) buckets 1\n"
+                + "properties('replication_num' = '1', 'binlog.enable' = 'true', 'binlog.format' = 'ROW');");
+
+        CreateMTMVInfo info = getPartitionTableInfo(
+                "CREATE MATERIALIZED VIEW ivm_partition_random_auto_key_mv\n"
+                + " BUILD DEFERRED REFRESH INCREMENTAL ON MANUAL\n"
+                + " PARTITION BY(dt)\n"
+                + " DISTRIBUTED BY RANDOM BUCKETS 3\n"
+                + " PROPERTIES ('replication_num' = '1')\n"
+                + " AS\n"
+                + " SELECT id, dt, v1 FROM ivm_partition_random_auto_key_base;");
+
+        Assertions.assertTrue(info.getDistribution().isHash());
+        Assertions.assertEquals(Column.IVM_ROW_ID_COL, info.getDistribution().getCols().get(0));
+        Assertions.assertEquals(3, info.getDistribution().translateToCatalogStyle().getBuckets());
+        Assertions.assertFalse(info.getDistribution().isAutoBucket());
+        Assertions.assertEquals(Arrays.asList("dt", Column.IVM_ROW_ID_COL), keyNames(info));
+    }
+
+    @Test
+    public void testIvmExplicitKeyPartitionRandomDistributionValid() throws Exception {
+        createTable("create table test.ivm_partition_explicit_key_random_base (id int, dt date, v1 int)\n"
+                + "duplicate key(id, dt)\n"
+                + "partition by range(dt) (partition p202601 values [('2026-01-01'), ('2026-02-01')))\n"
+                + "distributed by hash(id) buckets 1\n"
+                + "properties('replication_num' = '1', 'binlog.enable' = 'true', 'binlog.format' = 'ROW');");
+
+        CreateMTMVInfo info = getPartitionTableInfo(
+                "CREATE MATERIALIZED VIEW ivm_partition_explicit_key_random_mv\n"
+                + " BUILD DEFERRED REFRESH INCREMENTAL ON MANUAL\n"
+                + " KEY(id, dt)\n"
+                + " PARTITION BY(dt)\n"
+                + " DISTRIBUTED BY RANDOM BUCKETS 3\n"
+                + " PROPERTIES ('replication_num' = '1')\n"
+                + " AS\n"
+                + " SELECT id, dt, v1 FROM ivm_partition_explicit_key_random_base;");
+
+        Assertions.assertTrue(info.getDistribution().isHash());
+        Assertions.assertEquals(Column.IVM_ROW_ID_COL, info.getDistribution().getCols().get(0));
+        Assertions.assertEquals(3, info.getDistribution().translateToCatalogStyle().getBuckets());
+        Assertions.assertFalse(info.getDistribution().isAutoBucket());
+        Assertions.assertEquals(Arrays.asList("id", "dt", Column.IVM_ROW_ID_COL), keyNames(info));
+    }
+
+    @Test
+    public void testIvmRejectsExplicitKeyPartitionNonKey() throws Exception {
+        createTable("create table test.ivm_partition_explicit_key_base (id int, dt date, v1 int)\n"
+                + "duplicate key(id, dt)\n"
+                + "partition by range(dt) (partition p202601 values [('2026-01-01'), ('2026-02-01')))\n"
+                + "distributed by hash(id) buckets 1\n"
+                + "properties('replication_num' = '1', 'binlog.enable' = 'true', 'binlog.format' = 'ROW');");
+
+        Exception ex = Assertions.assertThrows(Exception.class, () -> getPartitionTableInfo(
+                "CREATE MATERIALIZED VIEW ivm_partition_explicit_key_mv\n"
+                + " BUILD DEFERRED REFRESH INCREMENTAL ON MANUAL\n"
+                + " KEY(id)\n"
+                + " PARTITION BY(dt)\n"
+                + " PROPERTIES ('replication_num' = '1')\n"
+                + " AS\n"
+                + " SELECT id, dt, v1 FROM ivm_partition_explicit_key_base;"));
+
+        Assertions.assertTrue(ex.getMessage().contains("Merge-on-Write table's partition column must be KEY column"),
+                "unexpected message: " + ex.getMessage());
     }
 
     @Test
@@ -957,7 +1166,7 @@ public class CreateMTMVCommandTest extends TestWithFeService {
                 + " PROPERTIES ('replication_num' = '1')\n"
                 + " AS\n"
                 + " SELECT k1, v1 FROM ivm_hidden_rowid_base;"));
-        Assertions.assertTrue(keyEx.getMessage().contains("IVM hidden column can not be key column"),
+        Assertions.assertTrue(keyEx.getMessage().contains("does not allow specifying the hidden row-id column"),
                 "unexpected message: " + keyEx.getMessage());
 
         AnalysisException distEx = Assertions.assertThrows(AnalysisException.class, () -> getPartitionTableInfo(

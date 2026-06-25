@@ -17,6 +17,7 @@
 
 package org.apache.doris.catalog;
 
+import org.apache.doris.common.Config;
 import org.apache.doris.mtmv.ivm.IvmUtil;
 import org.apache.doris.nereids.sqltest.SqlTestBase;
 
@@ -33,7 +34,7 @@ import java.util.stream.Collectors;
  * UNIQUE_KEYS + Merge-On-Write + hidden row-id columns internally. However,
  * SHOW CREATE should output a logical DDL that can be re-executed by users,
  * hiding internal row-id details:
- *   - No hidden row-id key in UNIQUE KEY(...)
+ *   - No hidden row-id key in KEY(...)
  *   - No hidden IVM columns anywhere in the DDL
  *   - Internal row-id HASH distribution is shown as RANDOM
  *   - No enable_unique_key_merge_on_write property
@@ -43,6 +44,7 @@ public class ShowCreateMTMVTest extends SqlTestBase {
     @Override
     protected void runBeforeAll() throws Exception {
         super.runBeforeAll();
+        Config.enable_table_stream = true;
         createTable("CREATE TABLE IF NOT EXISTS show_create_ivm_base (\n"
                 + "    id bigint,\n"
                 + "    score bigint\n"
@@ -170,6 +172,32 @@ public class ShowCreateMTMVTest extends SqlTestBase {
                 "IVM SHOW CREATE should preserve user RANDOM bucket count:\n" + ddl);
     }
 
+    @Test
+    public void testShowCreateIncrementalMVExplicitKeyRandomBucketsReplayable() throws Exception {
+        createMvByNereids("create materialized view mv_show_ivm_key_random_buckets "
+                + "BUILD DEFERRED REFRESH INCREMENTAL ON MANUAL\n"
+                + "KEY(id)\n"
+                + "DISTRIBUTED BY RANDOM BUCKETS 8\n"
+                + "PROPERTIES ('replication_num' = '1')\n"
+                + "as select * from test.show_create_ivm_base;");
+
+        Database db = Env.getCurrentEnv().getInternalCatalog().getDbOrAnalysisException("test");
+        MTMV mtmv = (MTMV) db.getTableOrAnalysisException("mv_show_ivm_key_random_buckets");
+        String ddl = Env.getMTMVDdl(mtmv);
+
+        Assertions.assertFalse(ddl.contains("__DORIS_IVM_"),
+                "IVM SHOW CREATE should not expose row-id distribution:\n" + ddl);
+        Assertions.assertFalse(ddl.contains("UNIQUE KEY"),
+                "Replayable IVM SHOW CREATE should not use UNIQUE KEY:\n" + ddl);
+        Assertions.assertTrue(ddl.contains("KEY(`id`)"),
+                "IVM SHOW CREATE should keep the user-visible key:\n" + ddl);
+        Assertions.assertTrue(ddl.contains("DISTRIBUTED BY RANDOM BUCKETS 8"),
+                "IVM SHOW CREATE should preserve user RANDOM bucket count:\n" + ddl);
+
+        createMvByNereids(ddl.replace("mv_show_ivm_key_random_buckets",
+                "mv_show_ivm_key_random_buckets_replay"));
+    }
+
     // TC-4-6: Even with show_hidden_columns=true, IVM row-id should not be exposed in SHOW CREATE
     @Test
     public void testShowCreateIncrementalMVNoRowIdEvenWithShowHidden() throws Exception {
@@ -242,7 +270,7 @@ public class ShowCreateMTMVTest extends SqlTestBase {
         // Step 2: verify DDL preserves user-visible key/distribution without exposing row-id.
         Assertions.assertFalse(ddl1.contains("__DORIS_IVM_"),
                 "DDL should not expose IVM hidden columns, but got:\n" + ddl1);
-        Assertions.assertTrue(ddl1.contains("UNIQUE KEY(`id`)"),
+        Assertions.assertTrue(ddl1.contains("KEY(`id`)"),
                 "DDL should contain visible key columns without row-id:\n" + ddl1);
         Assertions.assertTrue(ddl1.contains("DISTRIBUTED BY HASH(`id`) BUCKETS 3"),
                 "DDL should preserve user HASH distribution:\n" + ddl1);

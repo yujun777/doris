@@ -3876,7 +3876,7 @@ public class Env {
             }
         }
         if (!keysColumnNames.isEmpty()) {
-            String keySql = mtmv.getKeysType().toSql();
+            String keySql = filterIvmHiddenCols ? "KEY" : mtmv.getKeysType().toSql();
             sb.append("\n").append(keySql).append("(");
             sb.append(Joiner.on(", ").join(keysColumnNames)).append(")");
         }

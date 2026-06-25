@@ -724,13 +724,16 @@ public class MTMVPlanUtil {
 
         LinkedHashSet<String> finalKeys = new LinkedHashSet<>();
         boolean hasExplicitKeys = !CollectionUtils.isEmpty(keys);
+        validateIvmPartition(mvPartitionInfo);
         if (hasExplicitKeys) {
             for (String key : keys) {
                 validateIvmKeyColumn(columnMap, key);
                 addIvmFinalKey(finalKeys, columnMap.get(key).getName());
             }
+        } else {
+            addIvmPartitionKeyIfNeeded(finalKeys, columnMap, mvPartitionInfo);
+            addIvmHashDistributionKeysIfNeeded(finalKeys, columnMap, distribution);
         }
-        addIvmPartitionKeyIfNeeded(finalKeys, columnMap, mvPartitionInfo);
         if (hasExplicitKeys) {
             validateIvmExplicitKeysForAggregate(finalKeys, ivmNormalizeResult);
         }
@@ -759,16 +762,40 @@ public class MTMVPlanUtil {
         return Lists.newArrayList(finalKeys);
     }
 
+    private static void addIvmHashDistributionKeysIfNeeded(LinkedHashSet<String> finalKeys,
+            Map<String, ColumnDefinition> columnMap, DistributionDescriptor distribution) {
+        if (distribution == null || !distribution.isHash()) {
+            return;
+        }
+        for (String columnName : distribution.getCols()) {
+            if (!columnMap.containsKey(columnName)) {
+                throw new AnalysisException(String.format("Distribution column(%s) doesn't exist", columnName));
+            }
+            ColumnDefinition column = columnMap.get(columnName);
+            if (IvmUtil.isIvmHiddenColumn(column.getName())) {
+                continue;
+            }
+            validateIvmKeyColumn(columnMap, columnName);
+            addIvmFinalKey(finalKeys, column.getName());
+        }
+    }
+
     private static void addIvmPartitionKeyIfNeeded(LinkedHashSet<String> finalKeys,
             Map<String, ColumnDefinition> columnMap, MTMVPartitionInfo mvPartitionInfo) {
+        if (mvPartitionInfo == null || mvPartitionInfo.getPartitionType() == MTMVPartitionType.SELF_MANAGE) {
+            return;
+        }
+        validateIvmKeyColumn(columnMap, mvPartitionInfo.getPartitionCol());
+        addIvmFinalKey(finalKeys, columnMap.get(mvPartitionInfo.getPartitionCol()).getName());
+    }
+
+    private static void validateIvmPartition(MTMVPartitionInfo mvPartitionInfo) {
         if (mvPartitionInfo == null || mvPartitionInfo.getPartitionType() == MTMVPartitionType.SELF_MANAGE) {
             return;
         }
         if (mvPartitionInfo.getPartitionType() == MTMVPartitionType.EXPR) {
             throw new AnalysisException("IVM materialized view only supports column partition");
         }
-        validateIvmKeyColumn(columnMap, mvPartitionInfo.getPartitionCol());
-        addIvmFinalKey(finalKeys, columnMap.get(mvPartitionInfo.getPartitionCol()).getName());
     }
 
     private static void addIvmFinalKey(LinkedHashSet<String> finalKeys, String columnName) {
