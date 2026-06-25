@@ -178,10 +178,9 @@ public class CreateMTMVInfo extends CreateTableInfo {
         Map<String, ColumnDefinition> columnMap = new TreeMap<>(String.CASE_INSENSITIVE_ORDER);
         columns.forEach(c -> columnMap.put(c.getName(), c));
         KeysType distributionKeysType = isEnableIvm() ? KeysType.UNIQUE_KEYS : KeysType.DUP_KEYS;
+        boolean userHashDistributionForIvm = isEnableIvm() && distribution != null && distribution.isHash();
         if (isEnableIvm()) {
-            if (distribution != null && distribution.isHash()) {
-                validateUserDistributionForIvm(columnMap);
-            } else {
+            if (!userHashDistributionForIvm) {
                 distribution = buildIvmRowIdDistribution(distribution);
             }
         } else if (distribution == null) {
@@ -191,6 +190,9 @@ public class CreateMTMVInfo extends CreateTableInfo {
         properties = CreateTableInfo.maybeRewriteByAutoBucket(distribution, properties);
         distribution.updateCols(columns.get(0).getName());
         distribution.validate(columnMap, distributionKeysType);
+        if (userHashDistributionForIvm) {
+            validateUserDistributionForIvm(columnMap);
+        }
         refreshInfo.validate();
 
         analyzeProperties();
@@ -200,11 +202,7 @@ public class CreateMTMVInfo extends CreateTableInfo {
         setTableInformation(ctx);
     }
 
-    /**
-     * Validate the user HASH distribution after IVM final keys have been generated.
-     */
     private void validateUserDistributionForIvm(Map<String, ColumnDefinition> columnMap) {
-        distribution.validate(columnMap, KeysType.UNIQUE_KEYS);
         for (String columnName : distribution.getCols()) {
             ColumnDefinition column = columnMap.get(columnName);
             if (IvmUtil.isIvmHiddenColumn(column.getName())) {
