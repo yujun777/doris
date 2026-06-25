@@ -25,6 +25,7 @@ suite("test_ivm_partition_unique_key") {
     sql """drop materialized view if exists mv_ivm_partition_bad_expr;"""
     sql """drop materialized view if exists mv_ivm_partition_bad_dist;"""
     sql """drop materialized view if exists mv_ivm_partition_agg_key_subset;"""
+    sql """drop materialized view if exists mv_ivm_partition_agg_key_subset_replay;"""
     sql """drop materialized view if exists mv_ivm_partition_bad_agg_dist_key;"""
     sql """drop materialized view if exists mv_ivm_partition_bad_agg_value_key;"""
     sql """drop table if exists t_ivm_partition_key_base;"""
@@ -175,6 +176,27 @@ suite("test_ivm_partition_unique_key") {
             'replication_num' = '1'
         )
         AS SELECT dt, id, SUM(v) AS total_v FROM t_ivm_partition_key_base GROUP BY dt, id;
+    """
+
+    def aggShowCreateResult = sql """show create materialized view mv_ivm_partition_agg_key_subset"""
+    assertTrue(aggShowCreateResult.toString().contains("KEY(`id`)"))
+    assertFalse(aggShowCreateResult.toString().contains("__DORIS_IVM_"))
+    sql """
+        ${aggShowCreateResult[0][1].toString()
+            .replace("mv_ivm_partition_agg_key_subset", "mv_ivm_partition_agg_key_subset_replay")}
+    """
+
+    sql """REFRESH MATERIALIZED VIEW mv_ivm_partition_agg_key_subset COMPLETE"""
+    waitingMTMVTaskFinishedByMvName("mv_ivm_partition_agg_key_subset")
+    order_qt_agg_key_subset_complete """
+        SELECT dt, id, total_v FROM mv_ivm_partition_agg_key_subset ORDER BY dt, id
+    """
+
+    sql """INSERT INTO t_ivm_partition_key_base VALUES (1, '2026-06-01', 15);"""
+    sql """REFRESH MATERIALIZED VIEW mv_ivm_partition_agg_key_subset INCREMENTAL"""
+    waitingMTMVTaskFinishedByMvName("mv_ivm_partition_agg_key_subset")
+    order_qt_agg_key_subset_incremental """
+        SELECT dt, id, total_v FROM mv_ivm_partition_agg_key_subset ORDER BY dt, id
     """
 
     // Invalid: generated keys from HASH distribution also cannot include
