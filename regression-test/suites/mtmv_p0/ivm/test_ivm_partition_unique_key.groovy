@@ -46,6 +46,7 @@ suite("test_ivm_partition_unique_key") {
             "replication_num" = "1",
             "binlog.enable" = "true",
             "binlog.format" = "ROW",
+            "binlog.need_historical_value" = "true",
             "enable_unique_key_merge_on_write" = "true"
         );
     """
@@ -68,7 +69,7 @@ suite("test_ivm_partition_unique_key") {
         PROPERTIES (
             'replication_num' = '1'
         )
-        AS SELECT dt, id, v FROM t_ivm_partition_key_base;
+        AS SELECT id, dt, v FROM t_ivm_partition_key_base;
     """
 
     def descResult = sql """desc mv_ivm_partition_key all"""
@@ -130,7 +131,7 @@ suite("test_ivm_partition_unique_key") {
             )
             AS SELECT dt, id, v FROM t_ivm_partition_key_base;
         """
-        exception "partition column must be key column"
+        exception "partition column must be KEY column"
     }
 
     // Invalid: IVM only supports direct column partition in this scheme.
@@ -175,7 +176,7 @@ suite("test_ivm_partition_unique_key") {
         PROPERTIES (
             'replication_num' = '1'
         )
-        AS SELECT dt, id, SUM(v) AS total_v FROM t_ivm_partition_key_base GROUP BY dt, id;
+        AS SELECT id, dt, SUM(v) AS total_v FROM t_ivm_partition_key_base GROUP BY id, dt;
     """
 
     def aggShowCreateResult = sql """show create materialized view mv_ivm_partition_agg_key_subset"""
