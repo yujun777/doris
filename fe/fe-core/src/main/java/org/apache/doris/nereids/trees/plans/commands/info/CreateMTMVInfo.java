@@ -49,7 +49,6 @@ import org.apache.doris.mtmv.MTMVUtil;
 import org.apache.doris.mtmv.ivm.IvmException;
 import org.apache.doris.mtmv.ivm.IvmFailureReason;
 import org.apache.doris.mtmv.ivm.IvmPlanSignature;
-import org.apache.doris.mtmv.ivm.IvmUtil;
 import org.apache.doris.mysql.privilege.PrivPredicate;
 import org.apache.doris.nereids.CascadesContext;
 import org.apache.doris.nereids.StatementContext;
@@ -205,7 +204,7 @@ public class CreateMTMVInfo extends CreateTableInfo {
     private void validateUserDistributionForIvm(Map<String, ColumnDefinition> columnMap) {
         for (String columnName : distribution.getCols()) {
             ColumnDefinition column = columnMap.get(columnName);
-            if (IvmUtil.isIvmHiddenColumn(column.getName())) {
+            if (!column.isVisible()) {
                 throw new AnalysisException("IVM hidden column can not be distribution column: " + columnName);
             }
         }
@@ -314,6 +313,7 @@ public class CreateMTMVInfo extends CreateTableInfo {
                 this.logicalQuery, isEnableIvm());
         this.mvPartitionInfo = mtmvAnalyzeQueryInfo.getMvPartitionInfo();
         this.columns = mtmvAnalyzeQueryInfo.getColumnDefinitions();
+        this.keys = Utils.copyRequiredList(mtmvAnalyzeQueryInfo.getKeys());
         this.relation = mtmvAnalyzeQueryInfo.getRelation();
         this.properties = mtmvAnalyzeQueryInfo.getProperties();
         if (isEnableIvm()) {
@@ -500,6 +500,7 @@ public class CreateMTMVInfo extends CreateTableInfo {
     private static class AnalyzeQueryState {
         private final Map<String, String> properties;
         private final List<ColumnDefinition> columns;
+        private final List<String> keys;
         private final DistributionDescriptor distribution;
         private final PartitionDesc partitionDesc;
         private final LogicalPlan logicalQuery;
@@ -513,6 +514,7 @@ public class CreateMTMVInfo extends CreateTableInfo {
         private AnalyzeQueryState(CreateMTMVInfo info) {
             this.properties = info.properties == null ? null : Maps.newHashMap(info.properties);
             this.columns = info.columns;
+            this.keys = Utils.copyRequiredList(info.keys);
             this.distribution = info.distribution;
             this.partitionDesc = info.partitionDesc;
             this.logicalQuery = info.logicalQuery;
@@ -531,6 +533,7 @@ public class CreateMTMVInfo extends CreateTableInfo {
         private void restore(CreateMTMVInfo info) {
             info.properties = properties == null ? null : Maps.newHashMap(properties);
             info.columns = columns;
+            info.keys = Utils.copyRequiredList(keys);
             info.distribution = distribution;
             info.partitionDesc = partitionDesc;
             info.logicalQuery = logicalQuery;
