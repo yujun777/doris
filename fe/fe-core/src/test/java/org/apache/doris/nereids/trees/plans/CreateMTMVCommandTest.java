@@ -1093,6 +1093,91 @@ public class CreateMTMVCommandTest extends TestWithFeService {
     }
 
     @Test
+    public void testIvmAggregateExplicitKeyMayUseGroupKeyAlias() throws Exception {
+        createTable("create table test.ivm_agg_alias_key_base (id int, dt date, v1 int)\n"
+                + "duplicate key(id, dt)\n"
+                + "distributed by hash(id) buckets 1\n"
+                + "properties('replication_num' = '1', 'binlog.enable' = 'true', 'binlog.format' = 'ROW');");
+
+        CreateMTMVInfo info = getPartitionTableInfo(
+                "CREATE MATERIALIZED VIEW ivm_agg_alias_key_mv\n"
+                + " BUILD DEFERRED REFRESH INCREMENTAL ON MANUAL\n"
+                + " KEY(alias_id)\n"
+                + " DISTRIBUTED BY HASH(alias_id) BUCKETS 2\n"
+                + " PROPERTIES ('replication_num' = '1')\n"
+                + " AS\n"
+                + " SELECT id AS alias_id, dt, SUM(v1) AS total FROM ivm_agg_alias_key_base GROUP BY dt, id;");
+
+        Assertions.assertEquals(Arrays.asList("alias_id", Column.IVM_ROW_ID_COL), keyNames(info));
+        Assertions.assertEquals(Arrays.asList("alias_id", Column.IVM_ROW_ID_COL, "dt", "total"),
+                columnNames(info).subList(0, 4));
+    }
+
+    @Test
+    public void testIvmAggregateGeneratedKeyMayUseGroupKeyAliasFromHashDistribution() throws Exception {
+        createTable("create table test.ivm_agg_alias_hash_key_base (id int, dt date, v1 int)\n"
+                + "duplicate key(id, dt)\n"
+                + "distributed by hash(id) buckets 1\n"
+                + "properties('replication_num' = '1', 'binlog.enable' = 'true', 'binlog.format' = 'ROW');");
+
+        CreateMTMVInfo info = getPartitionTableInfo(
+                "CREATE MATERIALIZED VIEW ivm_agg_alias_hash_key_mv\n"
+                + " BUILD DEFERRED REFRESH INCREMENTAL ON MANUAL\n"
+                + " DISTRIBUTED BY HASH(alias_id) BUCKETS 2\n"
+                + " PROPERTIES ('replication_num' = '1')\n"
+                + " AS\n"
+                + " SELECT id AS alias_id, dt, SUM(v1) AS total "
+                + "FROM ivm_agg_alias_hash_key_base GROUP BY dt, id;");
+
+        Assertions.assertEquals(Arrays.asList("alias_id", Column.IVM_ROW_ID_COL), keyNames(info));
+        Assertions.assertEquals(Arrays.asList("alias_id", Column.IVM_ROW_ID_COL, "dt", "total"),
+                columnNames(info).subList(0, 4));
+    }
+
+    @Test
+    public void testIvmAggregateExplicitKeyMayUseGroupKeyExpressionAlias() throws Exception {
+        createTable("create table test.ivm_agg_expr_alias_key_base (id int not null, v1 int)\n"
+                + "duplicate key(id)\n"
+                + "distributed by hash(id) buckets 1\n"
+                + "properties('replication_num' = '1', 'binlog.enable' = 'true', 'binlog.format' = 'ROW');");
+
+        CreateMTMVInfo info = getPartitionTableInfo(
+                "CREATE MATERIALIZED VIEW ivm_agg_expr_alias_key_mv\n"
+                + " BUILD DEFERRED REFRESH INCREMENTAL ON MANUAL\n"
+                + " KEY(id_plus)\n"
+                + " DISTRIBUTED BY HASH(id_plus) BUCKETS 2\n"
+                + " PROPERTIES ('replication_num' = '1')\n"
+                + " AS\n"
+                + " SELECT id + 1 AS id_plus, SUM(v1) AS total "
+                + "FROM ivm_agg_expr_alias_key_base GROUP BY id + 1;");
+
+        Assertions.assertEquals(Arrays.asList("id_plus", Column.IVM_ROW_ID_COL), keyNames(info));
+        Assertions.assertEquals(Arrays.asList("id_plus", Column.IVM_ROW_ID_COL, "total"),
+                columnNames(info).subList(0, 3));
+    }
+
+    @Test
+    public void testIvmAggregateExplicitKeyMayUseRenamedGroupKeyColumn() throws Exception {
+        createTable("create table test.ivm_agg_renamed_key_base (id int, dt date, v1 int)\n"
+                + "duplicate key(id, dt)\n"
+                + "distributed by hash(id) buckets 1\n"
+                + "properties('replication_num' = '1', 'binlog.enable' = 'true', 'binlog.format' = 'ROW');");
+
+        CreateMTMVInfo info = getPartitionTableInfo(
+                "CREATE MATERIALIZED VIEW ivm_agg_renamed_key_mv (`renamed_id`, `renamed_dt`, `total`)\n"
+                + " BUILD DEFERRED REFRESH INCREMENTAL ON MANUAL\n"
+                + " KEY(renamed_id)\n"
+                + " DISTRIBUTED BY HASH(renamed_id) BUCKETS 2\n"
+                + " PROPERTIES ('replication_num' = '1')\n"
+                + " AS\n"
+                + " SELECT id, dt, SUM(v1) FROM ivm_agg_renamed_key_base GROUP BY dt, id;");
+
+        Assertions.assertEquals(Arrays.asList("renamed_id", Column.IVM_ROW_ID_COL), keyNames(info));
+        Assertions.assertEquals(Arrays.asList("renamed_id", Column.IVM_ROW_ID_COL, "renamed_dt", "total"),
+                columnNames(info).subList(0, 4));
+    }
+
+    @Test
     public void testIvmRejectsGeneratedAggregateResultKeyFromHashDistribution() throws Exception {
         createTable("create table test.ivm_agg_hash_result_key_base (id int, dt date, v1 int)\n"
                 + "duplicate key(id, dt)\n"

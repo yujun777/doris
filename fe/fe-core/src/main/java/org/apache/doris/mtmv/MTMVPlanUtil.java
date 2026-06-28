@@ -84,6 +84,7 @@ import org.apache.doris.nereids.types.StringType;
 import org.apache.doris.nereids.types.TinyIntType;
 import org.apache.doris.nereids.types.VarcharType;
 import org.apache.doris.nereids.types.coercion.CharacterType;
+import org.apache.doris.nereids.util.ExpressionUtils;
 import org.apache.doris.nereids.util.TypeCoercionUtils;
 import org.apache.doris.qe.AuditLogHelper;
 import org.apache.doris.qe.ConnectContext;
@@ -750,7 +751,7 @@ public class MTMVPlanUtil {
         }
         LinkedHashSet<String> finalKeys = new LinkedHashSet<>(visibleKeys);
         addIvmFinalKey(finalKeys, Column.IVM_ROW_ID_COL);
-        validateIvmAggregateKeys(finalKeys, ivmNormalizeResult);
+        validateIvmAggregateKeys(finalKeys, visibleColumns, ivmNormalizeResult);
         validateIvmVisibleKeyPrefix(Lists.newArrayList(visibleKeys), visibleOutputNames, hasExplicitKeys);
         applyIvmPhysicalKeyLayout(columns, columnMap, Lists.newArrayList(visibleKeys), Lists.newArrayList(finalKeys));
         return Lists.newArrayList(finalKeys);
@@ -859,22 +860,63 @@ public class MTMVPlanUtil {
         }
     }
 
-    private static void validateIvmAggregateKeys(Set<String> keySet, IvmNormalizeResult ivmNormalizeResult) {
+    private static void validateIvmAggregateKeys(Set<String> keySet, List<ColumnDefinition> visibleColumns,
+            IvmNormalizeResult ivmNormalizeResult) {
         if (ivmNormalizeResult == null || !ivmNormalizeResult.isAggMv()) {
             return;
         }
         IvmAggMeta aggMeta = ivmNormalizeResult.getAggMeta();
-        Set<String> groupKeyNames = Sets.newTreeSet(String.CASE_INSENSITIVE_ORDER);
-        for (Slot groupKey : aggMeta.getGroupKeySlots()) {
-            groupKeyNames.add(groupKey.getName());
+        List<String> visibleKeys = keySet.stream()
+                .filter(key -> !IvmUtil.isIvmHiddenColumn(key))
+                .collect(Collectors.toList());
+        if (visibleKeys.isEmpty()) {
+            return;
         }
-        for (String key : keySet) {
-            if (!IvmUtil.isIvmHiddenColumn(key) && !groupKeyNames.contains(key)) {
+
+        Plan normalizedPlan = ivmNormalizeResult.getNormalizedPlan();
+        if (normalizedPlan == null) {
+            throw new AnalysisException("IVM aggregate key validation requires normalized plan");
+        }
+        Map<String, Slot> visibleOutputSlotByColumn = buildVisibleOutputSlotByColumn(visibleColumns, normalizedPlan);
+
+        List<Expression> expressions = new ArrayList<>(aggMeta.getGroupKeySlots().size() + visibleKeys.size());
+        expressions.addAll(aggMeta.getGroupKeySlots());
+        for (String key : visibleKeys) {
+            Slot keySlot = visibleOutputSlotByColumn.get(key);
+            if (keySlot == null) {
+                throw new AnalysisException("IVM aggregate key column does not exist in normalized output: " + key);
+            }
+            expressions.add(keySlot);
+        }
+
+        List<? extends Expression> shuttledExpressions =
+                ExpressionUtils.shuttleExpressionWithLineage(expressions, normalizedPlan);
+        int groupKeySize = aggMeta.getGroupKeySlots().size();
+        Set<Expression> groupKeyLineages = Sets.newHashSet(shuttledExpressions.subList(0, groupKeySize));
+        for (int i = 0; i < visibleKeys.size(); i++) {
+            Expression keyLineage = shuttledExpressions.get(groupKeySize + i);
+            if (!groupKeyLineages.contains(keyLineage)) {
                 throw new AnalysisException(
                         "IVM aggregate materialized view key can not contain aggregate result column: "
-                        + key);
+                        + visibleKeys.get(i));
             }
         }
+    }
+
+    private static Map<String, Slot> buildVisibleOutputSlotByColumn(List<ColumnDefinition> visibleColumns,
+            Plan normalizedPlan) {
+        List<Slot> visibleOutputSlots = normalizedPlan.getOutput().stream()
+                .filter(slot -> !IvmUtil.isIvmHiddenColumn(slot.getName()))
+                .collect(Collectors.toList());
+        if (visibleOutputSlots.size() != visibleColumns.size()) {
+            throw new AnalysisException("IVM aggregate key validation failed to map MV columns to normalized output");
+        }
+
+        Map<String, Slot> visibleOutputSlotByColumn = new TreeMap<>(String.CASE_INSENSITIVE_ORDER);
+        for (int i = 0; i < visibleColumns.size(); i++) {
+            visibleOutputSlotByColumn.put(visibleColumns.get(i).getName(), visibleOutputSlots.get(i));
+        }
+        return visibleOutputSlotByColumn;
     }
 
     private static void validateIvmKeyColumn(Map<String, ColumnDefinition> columnMap, String columnName) {
