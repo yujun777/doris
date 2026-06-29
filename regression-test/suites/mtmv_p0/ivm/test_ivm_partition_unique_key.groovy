@@ -129,7 +129,7 @@ suite("test_ivm_partition_unique_key") {
             PROPERTIES (
                 'replication_num' = '1'
             )
-            AS SELECT dt, id, v FROM t_ivm_partition_key_base;
+            AS SELECT id, dt, v FROM t_ivm_partition_key_base;
         """
         exception "partition column must be KEY column"
     }
@@ -145,7 +145,7 @@ suite("test_ivm_partition_unique_key") {
             PROPERTIES (
                 'replication_num' = '1'
             )
-            AS SELECT dt, id, v FROM t_ivm_partition_key_base;
+            AS SELECT id, dt, v FROM t_ivm_partition_key_base;
         """
         exception "only supports column partition"
     }
@@ -161,7 +161,7 @@ suite("test_ivm_partition_unique_key") {
             PROPERTIES (
                 'replication_num' = '1'
             )
-            AS SELECT dt, id, v FROM t_ivm_partition_key_base;
+            AS SELECT id, dt, v FROM t_ivm_partition_key_base;
         """
         exception "Distribution column[dt] is not key column"
     }
