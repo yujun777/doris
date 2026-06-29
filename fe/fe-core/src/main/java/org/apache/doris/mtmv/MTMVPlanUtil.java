@@ -50,7 +50,6 @@ import org.apache.doris.job.task.AbstractTask;
 import org.apache.doris.mtmv.MTMVPartitionInfo.MTMVPartitionType;
 import org.apache.doris.mtmv.ivm.IvmNormalizeResult;
 import org.apache.doris.mtmv.ivm.IvmUtil;
-import org.apache.doris.mtmv.ivm.agg.IvmAggMeta;
 import org.apache.doris.nereids.NereidsPlanner;
 import org.apache.doris.nereids.StatementContext;
 import org.apache.doris.nereids.analyzer.UnboundResultSink;
@@ -64,6 +63,7 @@ import org.apache.doris.nereids.rules.exploration.mv.MaterializedViewUtils;
 import org.apache.doris.nereids.trees.expressions.Expression;
 import org.apache.doris.nereids.trees.expressions.Slot;
 import org.apache.doris.nereids.trees.expressions.SlotReference;
+import org.apache.doris.nereids.trees.expressions.functions.agg.AggregateFunction;
 import org.apache.doris.nereids.trees.plans.Plan;
 import org.apache.doris.nereids.trees.plans.commands.Command;
 import org.apache.doris.nereids.trees.plans.commands.ExplainCommand.ExplainLevel;
@@ -865,7 +865,6 @@ public class MTMVPlanUtil {
         if (ivmNormalizeResult == null || !ivmNormalizeResult.isAggMv()) {
             return;
         }
-        IvmAggMeta aggMeta = ivmNormalizeResult.getAggMeta();
         List<String> visibleKeys = keySet.stream()
                 .filter(key -> !IvmUtil.isIvmHiddenColumn(key))
                 .collect(Collectors.toList());
@@ -879,8 +878,7 @@ public class MTMVPlanUtil {
         }
         Map<String, Slot> visibleOutputSlotByColumn = buildVisibleOutputSlotByColumn(visibleColumns, normalizedPlan);
 
-        List<Expression> expressions = new ArrayList<>(aggMeta.getGroupKeySlots().size() + visibleKeys.size());
-        expressions.addAll(aggMeta.getGroupKeySlots());
+        List<Expression> expressions = new ArrayList<>(visibleKeys.size());
         for (String key : visibleKeys) {
             Slot keySlot = visibleOutputSlotByColumn.get(key);
             if (keySlot == null) {
@@ -891,13 +889,11 @@ public class MTMVPlanUtil {
 
         List<? extends Expression> shuttledExpressions =
                 ExpressionUtils.shuttleExpressionWithLineage(expressions, normalizedPlan);
-        int groupKeySize = aggMeta.getGroupKeySlots().size();
-        Set<Expression> groupKeyLineages = Sets.newHashSet(shuttledExpressions.subList(0, groupKeySize));
         for (int i = 0; i < visibleKeys.size(); i++) {
-            Expression keyLineage = shuttledExpressions.get(groupKeySize + i);
-            if (!groupKeyLineages.contains(keyLineage)) {
+            Expression keyLineage = shuttledExpressions.get(i);
+            if (keyLineage.containsType(AggregateFunction.class)) {
                 throw new AnalysisException(
-                        "IVM aggregate materialized view key can not contain aggregate result column: "
+                        "IVM aggregate materialized view key can not depend on aggregate result column: "
                         + visibleKeys.get(i));
             }
         }

@@ -1157,6 +1157,28 @@ public class CreateMTMVCommandTest extends TestWithFeService {
     }
 
     @Test
+    public void testIvmAggregateExplicitKeyMayUseExpressionFromGroupKeys() throws Exception {
+        createTable("create table test.ivm_agg_group_keys_expr_key_base (a int, b int, v1 int)\n"
+                + "duplicate key(a, b)\n"
+                + "distributed by hash(a) buckets 1\n"
+                + "properties('replication_num' = '1', 'binlog.enable' = 'true', 'binlog.format' = 'ROW');");
+
+        CreateMTMVInfo info = getPartitionTableInfo(
+                "CREATE MATERIALIZED VIEW ivm_agg_group_keys_expr_key_mv\n"
+                + " BUILD DEFERRED REFRESH INCREMENTAL ON MANUAL\n"
+                + " KEY(key_ab)\n"
+                + " DISTRIBUTED BY HASH(key_ab) BUCKETS 2\n"
+                + " PROPERTIES ('replication_num' = '1')\n"
+                + " AS\n"
+                + " SELECT a + b AS key_ab, SUM(v1) AS total "
+                + "FROM ivm_agg_group_keys_expr_key_base GROUP BY a, b;");
+
+        Assertions.assertEquals(Arrays.asList("key_ab", Column.IVM_ROW_ID_COL), keyNames(info));
+        Assertions.assertEquals(Arrays.asList("key_ab", Column.IVM_ROW_ID_COL, "total"),
+                columnNames(info).subList(0, 3));
+    }
+
+    @Test
     public void testIvmAggregateExplicitKeyMayUseRenamedGroupKeyColumn() throws Exception {
         createTable("create table test.ivm_agg_renamed_key_base (id int, dt date, v1 int)\n"
                 + "duplicate key(id, dt)\n"
