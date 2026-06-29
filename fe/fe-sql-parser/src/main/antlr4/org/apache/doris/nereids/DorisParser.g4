@@ -83,7 +83,7 @@ materializedViewStatement
         (BUCKETS (INTEGER_VALUE | AUTO))?)?
         propertyClause?
         AS? query                                                                               #createMTMV
-    | explain REFRESH MATERIALIZED VIEW mvName=multipartIdentifier INCREMENTAL explainDeltaClause?
+    | explain REFRESH MATERIALIZED VIEW mvName=multipartIdentifier INCREMENTAL
                                                                                                 #explainRefreshIvm
     | REFRESH MATERIALIZED VIEW mvName=multipartIdentifier
         (partitionSpec | refreshPolicy)                                                         #refreshMTMV
@@ -1178,10 +1178,6 @@ explain
           PROCESS?
     ;
 
-explainDeltaClause
-    : FOR DELTA deltaId=INTEGER_VALUE
-    ;
-
 explainCommand
     : EXPLAIN
     | DESC
@@ -2116,7 +2112,6 @@ nonReserved
     | DECIMALV2
     | DECIMALV3
     | DEFERRED
-    | DELTA
     | DEMAND
     | DIAGNOSE
     | DIAGNOSIS
