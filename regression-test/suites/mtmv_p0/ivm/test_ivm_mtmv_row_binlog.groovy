@@ -44,7 +44,8 @@ suite("test_ivm_mtmv_row_binlog", "nonConcurrent") {
     sql """
         CREATE MATERIALIZED VIEW test_ivm_mtmv_row_binlog_mv
         BUILD DEFERRED REFRESH INCREMENTAL ON MANUAL
-        DISTRIBUTED BY HASH(__DORIS_IVM_ROW_ID_COL__) BUCKETS 1
+        KEY(k1)
+        DISTRIBUTED BY HASH(k1) BUCKETS 1
         PROPERTIES (
             "replication_num" = "1",
             "binlog.enable" = "true",
