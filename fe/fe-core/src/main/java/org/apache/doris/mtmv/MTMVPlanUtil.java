@@ -872,19 +872,13 @@ public class MTMVPlanUtil {
             return;
         }
 
-        Plan normalizedPlan = ivmNormalizeResult.getNormalizedPlan();
-        if (normalizedPlan == null) {
-            throw new AnalysisException("IVM aggregate key validation requires normalized plan");
-        }
+        Plan normalizedPlan = Preconditions.checkNotNull(ivmNormalizeResult.getNormalizedPlan(),
+                "IVM aggregate key validation requires normalized plan");
         Map<String, Slot> visibleOutputSlotByColumn = buildVisibleOutputSlotByColumn(visibleColumns, normalizedPlan);
 
         List<Expression> expressions = new ArrayList<>(visibleKeys.size());
         for (String key : visibleKeys) {
-            Slot keySlot = visibleOutputSlotByColumn.get(key);
-            if (keySlot == null) {
-                throw new AnalysisException("IVM aggregate key column does not exist in normalized output: " + key);
-            }
-            expressions.add(keySlot);
+            expressions.add(visibleOutputSlotByColumn.get(key));
         }
 
         List<? extends Expression> shuttledExpressions =
