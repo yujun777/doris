@@ -454,11 +454,6 @@ public class MTMVTask extends AbstractTask {
                     "A previous incremental refresh did not complete; full refresh is required");
         }
         if (request.explicitPartitions) {
-            try {
-                syncPartitionsIfNeeded(ctx, tableIfs);
-            } catch (PartitionPlanningException e) {
-                return PartitionRefreshPlan.fallback(e.getMessage());
-            }
             MTMVRefreshContext context = buildRefreshContext(tableIfs);
             return PartitionRefreshPlan.success(context, request.partitions);
         }

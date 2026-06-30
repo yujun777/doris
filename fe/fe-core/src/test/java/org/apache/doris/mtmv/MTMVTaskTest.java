@@ -187,25 +187,6 @@ public class MTMVTaskTest {
     }
 
     @Test
-    public void testExplicitPartitionRefreshAlignsMvPartitions() throws Exception {
-        Mockito.when(mtmvPartitionInfo.getPctTables()).thenReturn(Sets.newHashSet());
-        MTMVTaskContext context = MTMVTaskContext.of(MTMVTaskTriggerMode.MANUAL, Lists.newArrayList(poneName),
-                RefreshMode.PARTITIONS, false, null);
-        MTMVTask task = new MTMVTask(mtmv, relation, context);
-        ConnectContext connectContext = new ConnectContext();
-        MTMVRefreshContext refreshContext = Mockito.mock(MTMVRefreshContext.class);
-
-        try (MockedStatic<MTMVRefreshContext> refreshContextStatic = Mockito.mockStatic(MTMVRefreshContext.class)) {
-            refreshContextStatic.when(() -> MTMVRefreshContext.buildContext(mtmv)).thenReturn(refreshContext);
-
-            Object request = Deencapsulation.invoke(task, "resolveRefreshRequest");
-            Deencapsulation.invoke(task, "planPartitionRefresh", connectContext, Collections.emptyList(), request);
-        }
-
-        mtmvPartitionUtilStatic.verify(() -> MTMVPartitionUtil.alignMvPartition(mtmv));
-    }
-
-    @Test
     public void testCalculateNeedRefreshPartitionsSystemNotSyncComplete() throws AnalysisException, JobException {
         mtmvPartitionUtilStatic.when(() -> MTMVPartitionUtil.isMTMVSync(Mockito.nullable(MTMVRefreshContext.class), Mockito.nullable(Set.class), Mockito.nullable(Set.class))).thenReturn(false);
         MTMVTaskContext context = new MTMVTaskContext(MTMVTaskTriggerMode.SYSTEM);
