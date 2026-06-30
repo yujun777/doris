@@ -120,8 +120,8 @@ public class MTMVTask extends AbstractTask {
             new Column("CompletedPartitions", ScalarType.createStringType()),
             new Column("Progress", ScalarType.createStringType()),
             new Column("LastQueryId", ScalarType.createStringType()),
-            new Column("IvmFallbackReason", ScalarType.createStringType()),
-            new Column("ComputeGroup", ScalarType.createStringType()));
+            new Column("ComputeGroup", ScalarType.createStringType()),
+            new Column("IvmFallbackReason", ScalarType.createStringType()));
 
     public static final ImmutableMap<String, Integer> COLUMN_TO_INDEX;
 
@@ -312,7 +312,7 @@ public class MTMVTask extends AbstractTask {
                         }
                         break;
                     case COMPLETE:
-                        executeCompleteAttempt(tableIfs);
+                        executeCompleteAttempt(ctx, tableIfs);
                         return;
                     default:
                         throw new JobException("Unsupported refresh attempt type: " + attemptType);
@@ -409,13 +409,7 @@ public class MTMVTask extends AbstractTask {
         List<RefreshAttemptType> attempts = Lists.newArrayList();
         switch (request.refreshMode) {
             case AUTO:
-                if (mtmv.isIvm()) {
-                    attempts.add(RefreshAttemptType.IVM);
-                }
-                // AUTO always has the full fallback chain. If the MV was created
-                // as non-IVM, it starts from PARTITIONS and may end at COMPLETE.
-                attempts.add(RefreshAttemptType.PARTITIONS);
-                attempts.add(RefreshAttemptType.COMPLETE);
+                attempts.addAll(buildAutoAttempts());
                 break;
             case INCREMENTAL:
                 attempts.add(RefreshAttemptType.IVM);
@@ -439,6 +433,46 @@ public class MTMVTask extends AbstractTask {
         return attempts;
     }
 
+    private List<RefreshAttemptType> buildAutoAttempts() {
+        RefreshMethod refreshMethod = mtmv.getRefreshInfo().getRefreshMethod();
+        if (refreshMethod == null) {
+            throw new IllegalStateException("Unsupported refresh method: null");
+        }
+        List<RefreshAttemptType> attempts = Lists.newArrayList();
+        switch (refreshMethod) {
+            case COMPLETE:
+                attempts.add(RefreshAttemptType.COMPLETE);
+                break;
+            case PARTITIONS:
+                attempts.add(RefreshAttemptType.PARTITIONS);
+                attempts.add(RefreshAttemptType.COMPLETE);
+                break;
+            case INCREMENTAL:
+                if (!mtmv.isIvm()) {
+                    throw new IllegalStateException("INCREMENTAL refresh policy requires INCREMENTAL capability");
+                }
+                attempts.add(RefreshAttemptType.IVM);
+                attempts.add(RefreshAttemptType.PARTITIONS);
+                attempts.add(RefreshAttemptType.COMPLETE);
+                break;
+            case AUTO:
+                if (mtmv.isIvm()) {
+                    attempts.add(RefreshAttemptType.IVM);
+                    attempts.add(RefreshAttemptType.PARTITIONS);
+                    attempts.add(RefreshAttemptType.COMPLETE);
+                } else if (mtmv.getMvPartitionInfo().getPartitionType() != MTMVPartitionType.SELF_MANAGE) {
+                    attempts.add(RefreshAttemptType.PARTITIONS);
+                    attempts.add(RefreshAttemptType.COMPLETE);
+                } else {
+                    attempts.add(RefreshAttemptType.COMPLETE);
+                }
+                break;
+            default:
+                throw new IllegalStateException("Unsupported refresh method: " + refreshMethod);
+        }
+        return attempts;
+    }
+
     private PartitionRefreshPlan planPartitionRefresh(ConnectContext ctx, List<TableIf> tableIfs,
             RefreshRequest request) throws JobException, AnalysisException, DdlException {
         if (mtmv.isIvm() && mtmv.getIvmInfo().isRunningIvmRefresh()) {
@@ -448,6 +482,11 @@ public class MTMVTask extends AbstractTask {
                     "A previous incremental refresh did not complete; full refresh is required");
         }
         if (request.explicitPartitions) {
+            try {
+                syncPartitionsIfNeeded(ctx, tableIfs);
+            } catch (PartitionPlanningException e) {
+                return PartitionRefreshPlan.fallback(e.getMessage());
+            }
             MTMVRefreshContext context = buildRefreshContext(tableIfs);
             return PartitionRefreshPlan.success(context, request.partitions);
         }
@@ -482,8 +521,13 @@ public class MTMVTask extends AbstractTask {
         }
     }
 
-    private void executeCompleteAttempt(List<TableIf> tableIfs)
-            throws JobException, AnalysisException {
+    private void executeCompleteAttempt(ConnectContext ctx, List<TableIf> tableIfs)
+            throws JobException, AnalysisException, DdlException {
+        try {
+            syncPartitionsIfNeeded(ctx, tableIfs);
+        } catch (PartitionPlanningException e) {
+            throw new JobException(e.getMessage(), e);
+        }
         MTMVRefreshContext context = buildRefreshContext(tableIfs);
         this.needRefreshPartitions = Lists.newArrayList(mtmv.getPartitionNames());
         this.refreshMode = generateRefreshMode(needRefreshPartitions);
@@ -499,14 +543,15 @@ public class MTMVTask extends AbstractTask {
                     + " refresh on a materialized view without INCREMENTAL capability.");
         }
         if (!mtmv.hasRefreshSnapshot()) {
-            ivmFallbackReason = "INCOMPLETE_REFRESH_SNAPSHOT";
             if (!request.allowFallback) {
-                throw new JobException("IVM incremental refresh failed for mv=" + mtmv.getName()
-                        + ", reason=INCOMPLETE_REFRESH_SNAPSHOT, detail=Run a full refresh to rebuild baseline");
+                LOG.info("IVM refresh starts without refresh snapshot for mv={}, taskId={}",
+                        mtmv.getName(), getTaskId());
+            } else {
+                ivmFallbackReason = "INCOMPLETE_REFRESH_SNAPSHOT";
+                LOG.warn("IVM refresh fell back for mv={}, reason=INCOMPLETE_REFRESH_SNAPSHOT, taskId={}. "
+                        + "Continuing with COMPLETE refresh.", mtmv.getName(), getTaskId());
+                return AttemptResultType.FALLBACK_TO_COMPLETE;
             }
-            LOG.warn("IVM refresh fell back for mv={}, reason=INCOMPLETE_REFRESH_SNAPSHOT, taskId={}. "
-                    + "Continuing with COMPLETE refresh.", mtmv.getName(), getTaskId());
-            return AttemptResultType.FALLBACK_TO_COMPLETE;
         }
         IvmRefreshManager ivmRefreshManager = new IvmRefreshManager();
         ivmFallbackPlanSignature = null;
@@ -924,9 +969,9 @@ public class MTMVTask extends AbstractTask {
         trow.addToColumnValue(
                 new TCell().setStringVal(lastQueryId));
         trow.addToColumnValue(new TCell().setStringVal(
-                ivmFallbackReason == null ? FeConstants.null_string : ivmFallbackReason));
-        trow.addToColumnValue(new TCell().setStringVal(
                 computeGroup == null || computeGroup.isEmpty() ? FeConstants.null_string : computeGroup));
+        trow.addToColumnValue(new TCell().setStringVal(
+                ivmFallbackReason == null ? FeConstants.null_string : ivmFallbackReason));
         return trow;
     }
 
