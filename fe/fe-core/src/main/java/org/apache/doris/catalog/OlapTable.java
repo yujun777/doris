@@ -2428,14 +2428,13 @@ public class OlapTable extends Table implements MTMVRelatedTableIf, GsonPostProc
         boolean isIvmMtmv = this instanceof MTMV && ((MTMV) this).isIvm();
         boolean hasIvmRowIdColumn = false;
         for (Column column : getBaseSchema(true)) {
-            if (!column.isVisible()) {
-                if (!column.isKey()) {
-                    continue;
-                }
-                Preconditions.checkState(isIvmMtmv && Column.IVM_ROW_ID_COL.equals(column.getName()),
-                        "binlog<Row> only supports IVM row id hidden key column: " + column.getName());
+            boolean isIvmRowIdColumn = Column.IVM_ROW_ID_COL.equals(column.getName());
+            if (!column.isVisible() && !column.isKey()) {
+                continue;
             }
-            hasIvmRowIdColumn = hasIvmRowIdColumn || Column.IVM_ROW_ID_COL.equals(column.getName());
+            Preconditions.checkState(column.isVisible() || (isIvmMtmv && isIvmRowIdColumn),
+                    "binlog<Row> only supports IVM row id hidden key column: " + column.getName());
+            hasIvmRowIdColumn = hasIvmRowIdColumn || isIvmRowIdColumn;
             Preconditions.checkState(!column.getType().isVariantType(),
                     "binlog<Row> does not support VARIANT column: " + column.getName());
             Preconditions.checkState(!column.isAutoInc(),
