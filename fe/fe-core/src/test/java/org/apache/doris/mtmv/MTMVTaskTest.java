@@ -502,11 +502,29 @@ public class MTMVTaskTest {
     }
 
     @Test
-    public void testExecuteIvmAttemptFallsBackToCompleteForIncompleteRefreshSnapshot() throws Exception {
+    public void testManualAutoExecuteIvmAttemptTriesIncrementalWithIncompleteRefreshSnapshot() throws Exception {
         Mockito.when(mtmv.isIvm()).thenReturn(true);
         Mockito.when(mtmv.getName()).thenReturn("test_mv");
         Mockito.when(mtmv.hasRefreshSnapshot()).thenReturn(false);
         MTMVTask task = new MTMVTask(mtmv, relation, new MTMVTaskContext(MTMVTaskTriggerMode.MANUAL));
+
+        try (MockedConstruction<IvmRefreshManager> ignored = Mockito.mockConstruction(IvmRefreshManager.class,
+                (mock, context) -> Mockito.when(mock.doRefresh(mtmv)).thenReturn(IvmRefreshResult.success()))) {
+            Object request = Deencapsulation.invoke(task, "resolveRefreshRequest");
+            Object result = Deencapsulation.invoke(task, "executeIvmAttempt", new Object[] {request});
+            Assert.assertEquals("SUCCESS", result.toString());
+            Assert.assertEquals(1, ignored.constructed().size());
+        }
+
+        Assert.assertNull(Deencapsulation.getField(task, "ivmFallbackReason"));
+    }
+
+    @Test
+    public void testSystemAutoExecuteIvmAttemptFallsBackToCompleteForIncompleteRefreshSnapshot() throws Exception {
+        Mockito.when(mtmv.isIvm()).thenReturn(true);
+        Mockito.when(mtmv.getName()).thenReturn("test_mv");
+        Mockito.when(mtmv.hasRefreshSnapshot()).thenReturn(false);
+        MTMVTask task = new MTMVTask(mtmv, relation, new MTMVTaskContext(MTMVTaskTriggerMode.SYSTEM));
 
         try (MockedConstruction<IvmRefreshManager> ignored = Mockito.mockConstruction(IvmRefreshManager.class,
                 (mock, context) -> Mockito.when(mock.doRefresh(mtmv)).thenReturn(IvmRefreshResult.success()))) {

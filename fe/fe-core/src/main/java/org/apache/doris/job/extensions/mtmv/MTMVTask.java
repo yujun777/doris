@@ -544,7 +544,7 @@ public class MTMVTask extends AbstractTask {
                     + " refresh on a materialized view without INCREMENTAL capability.");
         }
         if (!mtmv.hasRefreshSnapshot()) {
-            if (!request.allowFallback) {
+            if (!request.allowFallback || taskContext.getTriggerMode() == MTMVTaskTriggerMode.MANUAL) {
                 LOG.info("IVM refresh starts without refresh snapshot for mv={}, taskId={}",
                         mtmv.getName(), getTaskId());
             } else {
