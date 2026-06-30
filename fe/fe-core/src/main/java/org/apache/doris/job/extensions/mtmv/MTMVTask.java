@@ -387,10 +387,11 @@ public class MTMVTask extends AbstractTask {
                 throw new JobException("MTMV " + mtmv.getName()
                         + " has unknown refresh method, please refresh or recreate it.");
             }
-            if (refreshMethod == RefreshMethod.INCREMENTAL && mtmv.isIvm() && !mtmv.hasRefreshSnapshot()) {
-                // System/default refresh tasks may be the MV's first execution.
-                // Build the initial baseline with COMPLETE; explicit manual
-                // INCREMENTAL requests still keep strict incremental semantics.
+            if (taskContext.getTriggerMode() != MTMVTaskTriggerMode.MANUAL
+                    && refreshMethod == RefreshMethod.INCREMENTAL && mtmv.isIvm() && !mtmv.hasRefreshSnapshot()) {
+                // Default-policy system/on-commit tasks may be the MV's first
+                // execution. Build the initial baseline with COMPLETE; manual
+                // refresh must honor the user's requested refresh mode.
                 return new RefreshRequest(RefreshMode.COMPLETE, false, Lists.newArrayList(), false);
             }
             return new RefreshRequest(RefreshMode.valueOf(refreshMethod.name()),

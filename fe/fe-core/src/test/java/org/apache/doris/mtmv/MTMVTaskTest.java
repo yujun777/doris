@@ -586,6 +586,19 @@ public class MTMVTaskTest {
     }
 
     @Test
+    public void testManualDefaultIncrementalKeepsIncrementalWithoutSnapshot() {
+        Mockito.when(mtmv.isIvm()).thenReturn(true);
+        Mockito.when(mtmv.hasRefreshSnapshot()).thenReturn(false);
+        Mockito.when(mtmvRefreshInfo.getRefreshMethod()).thenReturn(RefreshMethod.INCREMENTAL);
+        MTMVTaskContext context = MTMVTaskContext.forMvDefault(MTMVTaskTriggerMode.MANUAL);
+        MTMVTask task = new MTMVTask(mtmv, relation, context);
+
+        Object request = Deencapsulation.invoke(task, "resolveRefreshRequest");
+        Assert.assertEquals(RefreshMode.INCREMENTAL, Deencapsulation.getField(request, "refreshMode"));
+        Assert.assertFalse(Deencapsulation.getField(request, "allowFallback"));
+    }
+
+    @Test
     public void testExecuteIvmAttemptFallsBackToCompleteForPlanSignatureMismatchInAutoMode() throws Exception {
         Mockito.when(mtmv.isIvm()).thenReturn(true);
         Mockito.when(mtmv.getName()).thenReturn("test_mv");
