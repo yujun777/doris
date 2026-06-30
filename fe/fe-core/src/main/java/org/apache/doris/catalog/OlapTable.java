@@ -2427,8 +2427,8 @@ public class OlapTable extends Table implements MTMVRelatedTableIf, GsonPostProc
 
         boolean isIvmMtmv = this instanceof MTMV && ((MTMV) this).isIvm();
         boolean hasIvmRowIdColumn = false;
-        for (Column column : getBaseSchema(isIvmMtmv)) {
-            if (isIvmMtmv && !column.isVisible() && !Column.IVM_ROW_ID_COL.equals(column.getName())) {
+        for (Column column : getBaseSchema(true)) {
+            if (!column.isVisible() && !column.isKey()) {
                 continue;
             }
             hasIvmRowIdColumn = hasIvmRowIdColumn || Column.IVM_ROW_ID_COL.equals(column.getName());

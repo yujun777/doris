@@ -34,16 +34,6 @@
 namespace doris {
 namespace segment_v2 {
 
-namespace {
-
-constexpr char kRowBinlogBeforePrefix[] = "__BEFORE__";
-
-bool is_row_binlog_before_column(const std::string& name) {
-    return name.rfind(kRowBinlogBeforePrefix, 0) == 0;
-}
-
-} // namespace
-
 RowBinlogSourceDataWriter::RowBinlogSourceDataWriter(const SegmentWriteBinlogOptions& opt)
         : _opt(opt) {}
 
@@ -479,31 +469,24 @@ Status RowBinlogSourceDataWriter::init(const TabletSchemaSPtr& binlog_tablet_sch
     int lsn_col_id = binlog_tablet_schema->binlog_lsn_col_idx();
     CHECK(lsn_col_id >= 0) << "binlog<row> schema missing __DORIS_BINLOG_LSN__";
 
-    // Source cids are not the same as row-binlog target ordinals. IVM MTMV keeps
-    // a hidden row id key, so derive the normal-column order from the target schema.
+    // Row-binlog normal columns follow source schema order and keep visible columns plus
+    // hidden key columns. Hidden non-key columns stay out of row-binlog.
     _source_cid_to_ordinal.assign(source_schema->num_columns(), INVALID_ORDINAL);
     uint32_t normal_start = lsn_col_id == 0 ? BINLOG_COLNUM : 0;
     uint32_t normal_scan_end = lsn_col_id == 0
                                        ? cast_set<uint32_t>(binlog_tablet_schema->num_columns())
                                        : cast_set<uint32_t>(lsn_col_id);
-    for (uint32_t target_cid = normal_start; target_cid < normal_scan_end; ++target_cid) {
-        const auto& target_column = binlog_tablet_schema->column(target_cid);
-        const auto& target_name = target_column.name();
-        if (is_row_binlog_before_column(target_name)) {
-            continue;
-        }
-        int32_t source_cid = source_schema->field_index(target_name);
-        if (source_cid < 0) {
-            return Status::InternalError("row binlog column {} not found in source schema",
-                                         target_name);
-        }
-        _source_cid_to_ordinal[source_cid] = cast_set<uint32_t>(_normal_column_ids.size());
-        _normal_column_ids.emplace_back(cast_set<uint32_t>(source_cid));
-    }
     for (uint32_t cid = 0; cid < source_schema->num_columns(); ++cid) {
-        if (source_schema->column(cid).is_key()) {
-            _source_key_column_ids.emplace_back(cid);
+        const auto& column = source_schema->column(cid);
+        if (column.visible() || column.is_key()) {
+            _source_cid_to_ordinal[cid] = cast_set<uint32_t>(_normal_column_ids.size());
+            _normal_column_ids.emplace_back(cid);
         }
+    }
+    if (normal_scan_end != normal_start + _normal_column_ids.size()) {
+        return Status::InternalError(
+                "row binlog schema normal column count mismatch, expected {}, actual {}",
+                _normal_column_ids.size(), normal_scan_end - normal_start);
     }
     _olap_data_convertor->reserve(source_schema->num_columns());
     for (size_t cid = 0; cid < source_schema->num_columns(); cid++) {
@@ -526,8 +509,10 @@ Status RowBinlogSourceDataWriter::prepare_by_source_block(
     size_t col_pos_in_block = 0;
     const auto& including_cids =
             partial_source_cids.empty() ? _normal_column_ids : partial_source_cids;
+    const bool is_partial_update = !partial_source_cids.empty();
     for (auto& cid : including_cids) {
-        const ColumnWithTypeAndName& col = block->get_by_position(col_pos_in_block++);
+        const ColumnWithTypeAndName& col =
+                block->get_by_position(is_partial_update ? col_pos_in_block++ : cid);
 
         RETURN_IF_ERROR(_olap_data_convertor->set_source_content_with_specifid_column(
                 col, row_pos, num_rows, cid));
@@ -540,7 +525,10 @@ Status RowBinlogSourceDataWriter::prepare_by_source_block(
 
         full_block->replace_by_position(cid, col.column);
     }
-    for (auto cid : _source_key_column_ids) {
+    for (auto cid : _normal_column_ids) {
+        if (!tablet_schema->column(cid).is_key()) {
+            continue;
+        }
         DORIS_CHECK(cid < _converted_columns.size());
         DORIS_CHECK(_converted_columns[cid] != nullptr);
         _key_columns.push_back(_converted_columns[cid]);

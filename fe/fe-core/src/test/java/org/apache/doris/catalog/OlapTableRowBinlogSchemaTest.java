@@ -69,7 +69,7 @@ public class OlapTableRowBinlogSchemaTest {
         Column aggState = new Column(Column.IVM_HIDDEN_COLUMN_PREFIX + "AGG_0_SUM_COL__", PrimitiveType.BIGINT);
         aggState.setIsVisible(false);
         aggState.setIsKey(false);
-        List<Column> baseSchema = Lists.newArrayList(key, rowId, value, aggState);
+        List<Column> baseSchema = Lists.newArrayList(key, rowId, aggState, value);
 
         OlapTableFactory.MTMVParams params = new OlapTableFactory.MTMVParams();
         params.tableId = 1L;
@@ -122,7 +122,7 @@ public class OlapTableRowBinlogSchemaTest {
     }
 
     @Test
-    public void testIvmRowBinlogSchemaIncludesHiddenRowId() {
+    public void testIvmRowBinlogSchemaIncludesHiddenKeyColumns() {
         MTMV mtmv = newTestIvmMtmv(BinlogTestUtils.newTestRowBinlogConfig(true, true));
 
         List<Column> rowBinlogSchema = mtmv.generateTableRowBinlogSchema();
@@ -131,6 +131,7 @@ public class OlapTableRowBinlogSchemaTest {
         Assertions.assertEquals("k1", columnNames.get(0));
         Assertions.assertEquals(Column.IVM_ROW_ID_COL, columnNames.get(1));
         Assertions.assertFalse(rowBinlogSchema.get(1).isVisible());
+        Assertions.assertTrue(rowBinlogSchema.get(1).isKey());
         Assertions.assertEquals("v1", columnNames.get(2));
         Assertions.assertEquals(Column.generateBeforeColName("v1"), columnNames.get(3));
         Assertions.assertFalse(columnNames.contains(Column.IVM_HIDDEN_COLUMN_PREFIX + "AGG_0_SUM_COL__"));

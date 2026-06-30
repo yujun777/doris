@@ -31,6 +31,7 @@ import org.apache.doris.catalog.info.PartitionNamesInfo;
 import org.apache.doris.common.AnalysisException;
 import org.apache.doris.common.Config;
 import org.apache.doris.common.MetaNotFoundException;
+import org.apache.doris.common.util.Util;
 import org.apache.doris.mtmv.ivm.IvmUtil;
 import org.apache.doris.planner.OlapScanNode;
 import org.apache.doris.planner.PlanNodeId;
@@ -141,7 +142,7 @@ public class TableBinlogFunction extends TableValuedFunctionIf {
         originTable.readLock();
         try {
             List<Column> schema = originTable.getRowBinlogMeta().getSchema(true);
-            if (originTable instanceof MTMV && ((MTMV) originTable).isIvm()) {
+            if (!Util.showHiddenColumns() && originTable instanceof MTMV && ((MTMV) originTable).isIvm()) {
                 return schema.stream()
                         .filter(column -> !IvmUtil.isIvmHiddenColumn(column.getName()))
                         .collect(Collectors.toList());

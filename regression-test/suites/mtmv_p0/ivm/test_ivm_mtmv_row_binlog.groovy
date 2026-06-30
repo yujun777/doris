@@ -65,4 +65,20 @@ suite("test_ivm_mtmv_row_binlog", "nonConcurrent") {
         FROM binlog("table" = "test_ivm_mtmv_row_binlog_mv")
         ORDER BY __DORIS_BINLOG_LSN__;
     """
+
+    sql """SET show_hidden_columns = true;"""
+    def mvRowIdRows = sql """
+        SELECT __DORIS_IVM_ROW_ID_COL__, k1, v1
+        FROM test_ivm_mtmv_row_binlog_mv
+        ORDER BY k1;
+    """
+    def binlogRowIdRows = sql """
+        SELECT __DORIS_IVM_ROW_ID_COL__, k1, v1
+        FROM binlog("table" = "test_ivm_mtmv_row_binlog_mv")
+        ORDER BY k1;
+    """
+    assertTrue(mvRowIdRows.size() > 0)
+    assertTrue(mvRowIdRows.every { it[0] != null })
+    assertEquals(mvRowIdRows, binlogRowIdRows)
+    sql """SET show_hidden_columns = false;"""
 }

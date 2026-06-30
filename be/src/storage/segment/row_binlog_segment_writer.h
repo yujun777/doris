@@ -79,7 +79,6 @@ private:
     std::unique_ptr<OlapBlockDataConvertor> _olap_data_convertor;
     std::vector<uint32_t> _normal_column_ids;
     std::vector<uint32_t> _source_cid_to_ordinal;
-    std::vector<uint32_t> _source_key_column_ids;
     std::vector<IOlapColumnDataAccessor*> _converted_columns;
     size_t _num_rows = 0;
 
