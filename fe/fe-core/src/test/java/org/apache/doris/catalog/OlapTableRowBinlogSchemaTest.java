@@ -59,6 +59,10 @@ public class OlapTableRowBinlogSchemaTest {
     }
 
     private static MTMV newTestIvmMtmv(BinlogConfig binlogConfig) {
+        return newTestIvmMtmv(binlogConfig, false);
+    }
+
+    private static MTMV newTestIvmMtmv(BinlogConfig binlogConfig, boolean hiddenNonKeyBeforeValue) {
         long baseIndexId = 1L;
         Column key = new Column("k1", PrimitiveType.INT);
         key.setIsKey(true);
@@ -69,7 +73,9 @@ public class OlapTableRowBinlogSchemaTest {
         Column aggState = new Column(Column.IVM_HIDDEN_COLUMN_PREFIX + "AGG_0_SUM_COL__", PrimitiveType.BIGINT);
         aggState.setIsVisible(false);
         aggState.setIsKey(false);
-        List<Column> baseSchema = Lists.newArrayList(key, rowId, aggState, value);
+        List<Column> baseSchema = hiddenNonKeyBeforeValue
+                ? Lists.newArrayList(key, rowId, aggState, value)
+                : Lists.newArrayList(key, rowId, value, aggState);
 
         OlapTableFactory.MTMVParams params = new OlapTableFactory.MTMVParams();
         params.tableId = 1L;
@@ -140,5 +146,14 @@ public class OlapTableRowBinlogSchemaTest {
         Assertions.assertEquals(5, columnNames.indexOf(Column.BINLOG_OPERATION_COL));
         Assertions.assertEquals(6, columnNames.indexOf(Column.BINLOG_TIMESTAMP_COL));
         Assertions.assertEquals(7, columnNames.size());
+    }
+
+    @Test
+    public void testIvmRowBinlogSchemaRejectsNonTrailingHiddenNonKeyColumn() {
+        MTMV mtmv = newTestIvmMtmv(BinlogTestUtils.newTestRowBinlogConfig(true, true), true);
+
+        IllegalStateException exception = Assertions.assertThrows(
+                IllegalStateException.class, mtmv::generateTableRowBinlogSchema);
+        Assertions.assertTrue(exception.getMessage().contains("hidden non-key"));
     }
 }
