@@ -47,8 +47,6 @@ public:
 
     void clear();
 
-    IOlapColumnDataAccessor* get_converted_column(uint32_t cid) { return _converted_columns[cid]; }
-
     bool need_before() const { return _opt.write_before; }
 
     const std::vector<IOlapColumnDataAccessor*>& source_key_columns() const { return _key_columns; }
@@ -58,9 +56,6 @@ public:
 
     // Number of source columns written to the row-binlog normal/AFTER area.
     size_t normal_column_count() const;
-
-    // Return the converted source column by row-binlog normal/AFTER ordinal.
-    IOlapColumnDataAccessor* get_converted_normal_column(uint32_t ordinal);
 
     // Translate a source column id to its ordinal in the row-binlog normal/AFTER area.
     uint32_t normal_ordinal(uint32_t source_cid) const;

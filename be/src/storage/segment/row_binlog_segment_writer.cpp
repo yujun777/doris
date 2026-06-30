@@ -41,11 +41,6 @@ size_t RowBinlogSourceDataWriter::normal_column_count() const {
     return _normal_column_ids.size();
 }
 
-IOlapColumnDataAccessor* RowBinlogSourceDataWriter::get_converted_normal_column(uint32_t ordinal) {
-    DCHECK_LT(ordinal, _normal_column_ids.size());
-    return get_converted_column(_normal_column_ids[ordinal]);
-}
-
 bool RowBinlogSourceDataWriter::has_normal_column(uint32_t source_cid) const {
     return source_cid < _source_cid_to_ordinal.size() &&
            _source_cid_to_ordinal[source_cid] != INVALID_ORDINAL;
@@ -249,13 +244,13 @@ Status RowBinlogSegmentWriter::append_block(const Block* block, size_t row_pos, 
         }
     }
 
-    // get key column, we use them to construct key index and search historical data.
     DCHECK(!_tablet_schema->has_sequence_col());
-    // _converted_key_columns must be resized before fill binlog columns
     _converted_key_columns.resize(_tablet_schema->num_key_columns());
-    for (size_t i = _normal_col_start_id; i < _tablet_schema->num_key_columns(); i++) {
-        const auto ordinal = cast_set<uint32_t>(i - _normal_col_start_id);
-        _converted_key_columns[i] = _source_data_writer->get_converted_normal_column(ordinal);
+    const auto& source_key_columns = _source_data_writer->source_key_columns();
+    for (size_t i = 0; i < source_key_columns.size(); ++i) {
+        const auto target_cid = _normal_col_start_id + i;
+        DORIS_CHECK(target_cid < _converted_key_columns.size());
+        _converted_key_columns[target_cid] = source_key_columns[i];
     }
 
     std::vector<int64_t> no_operators = std::vector<int64_t> {};
