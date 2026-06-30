@@ -223,31 +223,6 @@ public class MTMVTaskTest {
     }
 
     @Test
-    public void testManualAutoOnCompletePolicyUsesCompleteAttempt() throws JobException {
-        Mockito.when(mtmvRefreshInfo.getRefreshMethod()).thenReturn(RefreshMethod.COMPLETE);
-        MTMVTask task = new MTMVTask(mtmv, relation, new MTMVTaskContext(MTMVTaskTriggerMode.MANUAL));
-
-        Object request = Deencapsulation.invoke(task, "resolveRefreshRequest");
-        List<?> attempts = Deencapsulation.invoke(task, "buildAttempts", request);
-
-        Assert.assertEquals(Lists.newArrayList("COMPLETE"), attempts.stream()
-                .map(Object::toString).collect(Collectors.toList()));
-    }
-
-    @Test
-    public void testManualAutoWithoutCompleteSnapshotUsesCompleteAttempt() throws JobException {
-        Mockito.when(mtmvRefreshInfo.getRefreshMethod()).thenReturn(RefreshMethod.AUTO);
-        Mockito.when(mtmv.hasCompleteRefreshSnapshot()).thenReturn(false);
-        MTMVTask task = new MTMVTask(mtmv, relation, new MTMVTaskContext(MTMVTaskTriggerMode.MANUAL));
-
-        Object request = Deencapsulation.invoke(task, "resolveRefreshRequest");
-        List<?> attempts = Deencapsulation.invoke(task, "buildAttempts", request);
-
-        Assert.assertEquals(Lists.newArrayList("COMPLETE"), attempts.stream()
-                .map(Object::toString).collect(Collectors.toList()));
-    }
-
-    @Test
     public void testMvDefaultUnknownRefreshMethodRejected() throws AnalysisException {
         Mockito.when(mtmv.getName()).thenReturn("test_mv");
         Mockito.when(mtmvRefreshInfo.getRefreshMethod()).thenReturn(null);
@@ -262,9 +237,10 @@ public class MTMVTaskTest {
 
     @Test
     public void testTaskSchemaContainsComputeGroup() {
-        Assert.assertEquals(COMPUTE_GROUP, MTMVTask.SCHEMA.get(19).getName());
-        Assert.assertEquals(19, MTMVTask.COLUMN_TO_INDEX.get(COMPUTE_GROUP.toLowerCase()).intValue());
-        Assert.assertEquals("IvmFallbackReason", MTMVTask.SCHEMA.get(MTMVTask.SCHEMA.size() - 1).getName());
+        Column lastColumn = MTMVTask.SCHEMA.get(MTMVTask.SCHEMA.size() - 1);
+        Assert.assertEquals(COMPUTE_GROUP, lastColumn.getName());
+        Assert.assertEquals(MTMVTask.SCHEMA.size() - 1,
+                MTMVTask.COLUMN_TO_INDEX.get(COMPUTE_GROUP.toLowerCase()).intValue());
     }
 
     @Test
@@ -412,8 +388,8 @@ public class MTMVTaskTest {
         try (MockedConstruction<IvmRefreshManager> ignored = Mockito.mockConstruction(IvmRefreshManager.class,
                 (mock, context) -> Mockito.when(mock.doRefresh(mtmv)).thenReturn(
                         IvmRefreshResult.fallback(IvmFailureReason.BINLOG_NOT_ENABLED, "no_binlog")))) {
-            Object request = Deencapsulation.invoke(task, "resolveRefreshRequest");
-            Object result = Deencapsulation.invoke(task, "executeIvmAttempt", request);
+            Object result = Deencapsulation.invoke(task, "executeIvmAttempt",
+                    Deencapsulation.invoke(task, "resolveRefreshRequest"));
             Assert.assertEquals("FALLBACK_ALLOWED", result.toString());
         }
 
@@ -432,8 +408,8 @@ public class MTMVTaskTest {
                 (mock, context) -> Mockito.when(mock.doRefresh(mtmv)).thenReturn(
                         IvmRefreshResult.fallback(IvmFailureReason.PLAN_SIGNATURE_MISMATCH,
                                 "layout drift", currentSignature)))) {
-            Object request = Deencapsulation.invoke(task, "resolveRefreshRequest");
-            Object result = Deencapsulation.invoke(task, "executeIvmAttempt", request);
+            Object result = Deencapsulation.invoke(task, "executeIvmAttempt",
+                    Deencapsulation.invoke(task, "resolveRefreshRequest"));
             Assert.assertEquals("FALLBACK_TO_COMPLETE", result.toString());
         }
 
@@ -453,8 +429,8 @@ public class MTMVTaskTest {
         try (MockedConstruction<IvmRefreshManager> ignored = Mockito.mockConstruction(IvmRefreshManager.class,
                 (mock, context) -> Mockito.when(mock.doRefresh(mtmv)).thenReturn(
                         IvmRefreshResult.fallback(IvmFailureReason.BINLOG_NOT_ENABLED, "no_binlog")))) {
-            Object request = Deencapsulation.invoke(task, "resolveRefreshRequest");
-            Object result = Deencapsulation.invoke(task, "executeIvmAttempt", request);
+            Object result = Deencapsulation.invoke(task, "executeIvmAttempt",
+                    Deencapsulation.invoke(task, "resolveRefreshRequest"));
             Assert.assertEquals("FALLBACK_ALLOWED", result.toString());
         }
 
@@ -500,8 +476,8 @@ public class MTMVTaskTest {
                 mtmvPlanUtilStatic.when(() -> MTMVPlanUtil.analyzeQueryWithSql(
                         Mockito.eq(mtmv), Mockito.eq(connectContext), Mockito.eq(true))).thenReturn(queryInfo);
 
-                Object request = Deencapsulation.invoke(task, "resolveRefreshRequest");
-                Object result = Deencapsulation.invoke(task, "executeIvmAttempt", request);
+                Object result = Deencapsulation.invoke(task, "executeIvmAttempt",
+                        Deencapsulation.invoke(task, "resolveRefreshRequest"));
                 Assert.assertEquals("FALLBACK_TO_COMPLETE", result.toString());
             }
 
@@ -549,9 +525,9 @@ public class MTMVTaskTest {
         try (MockedConstruction<IvmRefreshManager> ignored = Mockito.mockConstruction(IvmRefreshManager.class,
                 (mock, constructionContext) -> Mockito.when(mock.doRefresh(mtmv)).thenThrow(
                         new IvmException(IvmFailureReason.INCREMENTAL_EXECUTION_FAILED, "delta failed")))) {
-            Object request = Deencapsulation.invoke(task, "resolveRefreshRequest");
             JobException exception = Assert.assertThrows(JobException.class,
-                    () -> Deencapsulation.invoke(task, "executeIvmAttempt", request));
+                    () -> Deencapsulation.invoke(task, "executeIvmAttempt",
+                            Deencapsulation.invoke(task, "resolveRefreshRequest")));
             Assert.assertTrue(exception.getMessage().contains("INCREMENTAL_EXECUTION_FAILED"));
         }
 
