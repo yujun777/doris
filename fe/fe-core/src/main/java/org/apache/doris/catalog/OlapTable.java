@@ -2427,17 +2427,14 @@ public class OlapTable extends Table implements MTMVRelatedTableIf, GsonPostProc
 
         boolean isIvmMtmv = this instanceof MTMV && ((MTMV) this).isIvm();
         boolean hasIvmRowIdColumn = false;
-        boolean seenHiddenNonKeyColumn = false;
         for (Column column : getBaseSchema(true)) {
-            if (!column.isVisible() && !column.isKey()) {
-                seenHiddenNonKeyColumn = true;
-                continue;
+            if (!column.isVisible()) {
+                if (!column.isKey()) {
+                    continue;
+                }
+                Preconditions.checkState(isIvmMtmv && Column.IVM_ROW_ID_COL.equals(column.getName()),
+                        "binlog<Row> only supports IVM row id hidden key column: " + column.getName());
             }
-            // Hidden non-key columns are trailing internal columns; row-binlog normal columns must
-            // remain a source-schema prefix.
-            Preconditions.checkState(!seenHiddenNonKeyColumn,
-                    "binlog<Row> does not support visible/key column after hidden non-key column: "
-                            + column.getName());
             hasIvmRowIdColumn = hasIvmRowIdColumn || Column.IVM_ROW_ID_COL.equals(column.getName());
             Preconditions.checkState(!column.getType().isVariantType(),
                     "binlog<Row> does not support VARIANT column: " + column.getName());
