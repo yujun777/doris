@@ -120,8 +120,8 @@ public class MTMVTask extends AbstractTask {
             new Column("CompletedPartitions", ScalarType.createStringType()),
             new Column("Progress", ScalarType.createStringType()),
             new Column("LastQueryId", ScalarType.createStringType()),
-            new Column("IvmFallbackReason", ScalarType.createStringType()),
-            new Column("ComputeGroup", ScalarType.createStringType()));
+            new Column("ComputeGroup", ScalarType.createStringType()),
+            new Column("IvmFallbackReason", ScalarType.createStringType()));
 
     public static final ImmutableMap<String, Integer> COLUMN_TO_INDEX;
 
@@ -403,13 +403,25 @@ public class MTMVTask extends AbstractTask {
         List<RefreshAttemptType> attempts = Lists.newArrayList();
         switch (request.refreshMode) {
             case AUTO:
+                if (!mtmv.hasCompleteRefreshSnapshot()) {
+                    attempts.add(RefreshAttemptType.COMPLETE);
+                    break;
+                }
+                RefreshMethod mvRefreshMethod = mtmv.getRefreshInfo().getRefreshMethod();
+                if (mvRefreshMethod == RefreshMethod.COMPLETE) {
+                    attempts.add(RefreshAttemptType.COMPLETE);
+                    break;
+                }
                 if (mtmv.isIvm()) {
                     attempts.add(RefreshAttemptType.IVM);
+                    attempts.add(RefreshAttemptType.PARTITIONS);
+                    attempts.add(RefreshAttemptType.COMPLETE);
+                    break;
                 }
-                // AUTO always has the full fallback chain. If the MV was created
-                // as non-IVM, it starts from PARTITIONS and may end at COMPLETE.
                 attempts.add(RefreshAttemptType.PARTITIONS);
-                attempts.add(RefreshAttemptType.COMPLETE);
+                if (mvRefreshMethod == RefreshMethod.AUTO) {
+                    attempts.add(RefreshAttemptType.COMPLETE);
+                }
                 break;
             case INCREMENTAL:
                 attempts.add(RefreshAttemptType.IVM);
@@ -442,6 +454,11 @@ public class MTMVTask extends AbstractTask {
                     "A previous incremental refresh did not complete; full refresh is required");
         }
         if (request.explicitPartitions) {
+            try {
+                syncPartitionsIfNeeded(ctx, tableIfs);
+            } catch (PartitionPlanningException e) {
+                return PartitionRefreshPlan.fallback(e.getMessage());
+            }
             MTMVRefreshContext context = buildRefreshContext(tableIfs);
             return PartitionRefreshPlan.success(context, request.partitions);
         }
@@ -914,9 +931,9 @@ public class MTMVTask extends AbstractTask {
         trow.addToColumnValue(
                 new TCell().setStringVal(lastQueryId));
         trow.addToColumnValue(new TCell().setStringVal(
-                ivmFallbackReason == null ? FeConstants.null_string : ivmFallbackReason));
-        trow.addToColumnValue(new TCell().setStringVal(
                 computeGroup == null || computeGroup.isEmpty() ? FeConstants.null_string : computeGroup));
+        trow.addToColumnValue(new TCell().setStringVal(
+                ivmFallbackReason == null ? FeConstants.null_string : ivmFallbackReason));
         return trow;
     }
 

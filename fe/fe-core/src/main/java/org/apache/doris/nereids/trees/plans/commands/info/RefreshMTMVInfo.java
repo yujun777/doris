@@ -123,7 +123,7 @@ public class RefreshMTMVInfo {
         if (mvRefreshMethod == null) {
             throw new AnalysisException("Materialized view has unknown refresh method.");
         }
-        if (!isRefreshModeCompatible(mtmv, mvRefreshMethod)) {
+        if (CollectionUtils.isEmpty(partitions) && !isRefreshModeCompatible(mtmv, mvRefreshMethod)) {
             throw new AnalysisException("Cannot use " + refreshMode
                     + " refresh on a materialized view with " + mvRefreshMethod + " refresh policy.");
         }
@@ -139,7 +139,7 @@ public class RefreshMTMVInfo {
 
     private boolean isRefreshModeCompatible(MTMV mtmv, RefreshMethod mvRefreshMethod) {
         if (refreshMode == RefreshMode.AUTO) {
-            return false;
+            return true;
         }
         switch (mvRefreshMethod) {
             case COMPLETE:

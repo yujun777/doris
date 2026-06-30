@@ -187,6 +187,25 @@ public class MTMVTaskTest {
     }
 
     @Test
+    public void testExplicitPartitionRefreshAlignsMvPartitions() throws Exception {
+        Mockito.when(mtmvPartitionInfo.getPctTables()).thenReturn(Sets.newHashSet());
+        MTMVTaskContext context = MTMVTaskContext.of(MTMVTaskTriggerMode.MANUAL, Lists.newArrayList(poneName),
+                RefreshMode.PARTITIONS, false, null);
+        MTMVTask task = new MTMVTask(mtmv, relation, context);
+        ConnectContext connectContext = new ConnectContext();
+        MTMVRefreshContext refreshContext = Mockito.mock(MTMVRefreshContext.class);
+
+        try (MockedStatic<MTMVRefreshContext> refreshContextStatic = Mockito.mockStatic(MTMVRefreshContext.class)) {
+            refreshContextStatic.when(() -> MTMVRefreshContext.buildContext(mtmv)).thenReturn(refreshContext);
+
+            Object request = Deencapsulation.invoke(task, "resolveRefreshRequest");
+            Deencapsulation.invoke(task, "planPartitionRefresh", connectContext, Collections.emptyList(), request);
+        }
+
+        mtmvPartitionUtilStatic.verify(() -> MTMVPartitionUtil.alignMvPartition(mtmv));
+    }
+
+    @Test
     public void testCalculateNeedRefreshPartitionsSystemNotSyncComplete() throws AnalysisException, JobException {
         mtmvPartitionUtilStatic.when(() -> MTMVPartitionUtil.isMTMVSync(Mockito.nullable(MTMVRefreshContext.class), Mockito.nullable(Set.class), Mockito.nullable(Set.class))).thenReturn(false);
         MTMVTaskContext context = new MTMVTaskContext(MTMVTaskTriggerMode.SYSTEM);
@@ -223,6 +242,31 @@ public class MTMVTaskTest {
     }
 
     @Test
+    public void testManualAutoOnCompletePolicyUsesCompleteAttempt() throws JobException {
+        Mockito.when(mtmvRefreshInfo.getRefreshMethod()).thenReturn(RefreshMethod.COMPLETE);
+        MTMVTask task = new MTMVTask(mtmv, relation, new MTMVTaskContext(MTMVTaskTriggerMode.MANUAL));
+
+        Object request = Deencapsulation.invoke(task, "resolveRefreshRequest");
+        List<?> attempts = Deencapsulation.invoke(task, "buildAttempts", request);
+
+        Assert.assertEquals(Lists.newArrayList("COMPLETE"), attempts.stream()
+                .map(Object::toString).collect(Collectors.toList()));
+    }
+
+    @Test
+    public void testManualAutoWithoutCompleteSnapshotUsesCompleteAttempt() throws JobException {
+        Mockito.when(mtmvRefreshInfo.getRefreshMethod()).thenReturn(RefreshMethod.AUTO);
+        Mockito.when(mtmv.hasCompleteRefreshSnapshot()).thenReturn(false);
+        MTMVTask task = new MTMVTask(mtmv, relation, new MTMVTaskContext(MTMVTaskTriggerMode.MANUAL));
+
+        Object request = Deencapsulation.invoke(task, "resolveRefreshRequest");
+        List<?> attempts = Deencapsulation.invoke(task, "buildAttempts", request);
+
+        Assert.assertEquals(Lists.newArrayList("COMPLETE"), attempts.stream()
+                .map(Object::toString).collect(Collectors.toList()));
+    }
+
+    @Test
     public void testMvDefaultUnknownRefreshMethodRejected() throws AnalysisException {
         Mockito.when(mtmv.getName()).thenReturn("test_mv");
         Mockito.when(mtmvRefreshInfo.getRefreshMethod()).thenReturn(null);
@@ -237,10 +281,9 @@ public class MTMVTaskTest {
 
     @Test
     public void testTaskSchemaContainsComputeGroup() {
-        Column lastColumn = MTMVTask.SCHEMA.get(MTMVTask.SCHEMA.size() - 1);
-        Assert.assertEquals(COMPUTE_GROUP, lastColumn.getName());
-        Assert.assertEquals(MTMVTask.SCHEMA.size() - 1,
-                MTMVTask.COLUMN_TO_INDEX.get(COMPUTE_GROUP.toLowerCase()).intValue());
+        Assert.assertEquals(COMPUTE_GROUP, MTMVTask.SCHEMA.get(19).getName());
+        Assert.assertEquals(19, MTMVTask.COLUMN_TO_INDEX.get(COMPUTE_GROUP.toLowerCase()).intValue());
+        Assert.assertEquals("IvmFallbackReason", MTMVTask.SCHEMA.get(MTMVTask.SCHEMA.size() - 1).getName());
     }
 
     @Test
@@ -388,8 +431,8 @@ public class MTMVTaskTest {
         try (MockedConstruction<IvmRefreshManager> ignored = Mockito.mockConstruction(IvmRefreshManager.class,
                 (mock, context) -> Mockito.when(mock.doRefresh(mtmv)).thenReturn(
                         IvmRefreshResult.fallback(IvmFailureReason.BINLOG_NOT_ENABLED, "no_binlog")))) {
-            Object result = Deencapsulation.invoke(task, "executeIvmAttempt",
-                    Deencapsulation.invoke(task, "resolveRefreshRequest"));
+            Object request = Deencapsulation.invoke(task, "resolveRefreshRequest");
+            Object result = Deencapsulation.invoke(task, "executeIvmAttempt", request);
             Assert.assertEquals("FALLBACK_ALLOWED", result.toString());
         }
 
@@ -408,8 +451,8 @@ public class MTMVTaskTest {
                 (mock, context) -> Mockito.when(mock.doRefresh(mtmv)).thenReturn(
                         IvmRefreshResult.fallback(IvmFailureReason.PLAN_SIGNATURE_MISMATCH,
                                 "layout drift", currentSignature)))) {
-            Object result = Deencapsulation.invoke(task, "executeIvmAttempt",
-                    Deencapsulation.invoke(task, "resolveRefreshRequest"));
+            Object request = Deencapsulation.invoke(task, "resolveRefreshRequest");
+            Object result = Deencapsulation.invoke(task, "executeIvmAttempt", request);
             Assert.assertEquals("FALLBACK_TO_COMPLETE", result.toString());
         }
 
@@ -429,8 +472,8 @@ public class MTMVTaskTest {
         try (MockedConstruction<IvmRefreshManager> ignored = Mockito.mockConstruction(IvmRefreshManager.class,
                 (mock, context) -> Mockito.when(mock.doRefresh(mtmv)).thenReturn(
                         IvmRefreshResult.fallback(IvmFailureReason.BINLOG_NOT_ENABLED, "no_binlog")))) {
-            Object result = Deencapsulation.invoke(task, "executeIvmAttempt",
-                    Deencapsulation.invoke(task, "resolveRefreshRequest"));
+            Object request = Deencapsulation.invoke(task, "resolveRefreshRequest");
+            Object result = Deencapsulation.invoke(task, "executeIvmAttempt", request);
             Assert.assertEquals("FALLBACK_ALLOWED", result.toString());
         }
 
@@ -476,8 +519,8 @@ public class MTMVTaskTest {
                 mtmvPlanUtilStatic.when(() -> MTMVPlanUtil.analyzeQueryWithSql(
                         Mockito.eq(mtmv), Mockito.eq(connectContext), Mockito.eq(true))).thenReturn(queryInfo);
 
-                Object result = Deencapsulation.invoke(task, "executeIvmAttempt",
-                        Deencapsulation.invoke(task, "resolveRefreshRequest"));
+                Object request = Deencapsulation.invoke(task, "resolveRefreshRequest");
+                Object result = Deencapsulation.invoke(task, "executeIvmAttempt", request);
                 Assert.assertEquals("FALLBACK_TO_COMPLETE", result.toString());
             }
 
@@ -525,9 +568,9 @@ public class MTMVTaskTest {
         try (MockedConstruction<IvmRefreshManager> ignored = Mockito.mockConstruction(IvmRefreshManager.class,
                 (mock, constructionContext) -> Mockito.when(mock.doRefresh(mtmv)).thenThrow(
                         new IvmException(IvmFailureReason.INCREMENTAL_EXECUTION_FAILED, "delta failed")))) {
+            Object request = Deencapsulation.invoke(task, "resolveRefreshRequest");
             JobException exception = Assert.assertThrows(JobException.class,
-                    () -> Deencapsulation.invoke(task, "executeIvmAttempt",
-                            Deencapsulation.invoke(task, "resolveRefreshRequest")));
+                    () -> Deencapsulation.invoke(task, "executeIvmAttempt", request));
             Assert.assertTrue(exception.getMessage().contains("INCREMENTAL_EXECUTION_FAILED"));
         }
 
