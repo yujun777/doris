@@ -18,7 +18,6 @@
 #include "storage/binlog.h"
 #include "storage/segment/historical_row_retriever.h"
 #include "storage/segment/segment_writer.h"
-
 namespace doris {
 
 namespace segment_v2 {
@@ -30,7 +29,7 @@ public:
 
     ~RowBinlogSourceDataWriter();
 
-    Status init(const TabletSchemaSPtr& binlog_tablet_schema);
+    Status init();
 
     Status prepare_by_source_block(const Block* block, size_t row_pos, size_t num_rows,
                                    std::vector<uint32_t>& partial_source_cids,
