@@ -2425,7 +2425,16 @@ public class OlapTable extends Table implements MTMVRelatedTableIf, GsonPostProc
         boolean needHistoricalValue = getBinlogConfig().getNeedHistoricalValue();
         List<Column> beforeColumns = new ArrayList<>();
 
-        for (Column column : getBaseSchema(false)) {
+        boolean isIvmMtmv = this instanceof MTMV && ((MTMV) this).isIvm();
+        boolean hasIvmRowIdColumn = false;
+        for (Column column : getBaseSchema(true)) {
+            boolean isIvmRowIdColumn = Column.IVM_ROW_ID_COL.equals(column.getName());
+            if (!column.isVisible() && !column.isKey()) {
+                continue;
+            }
+            Preconditions.checkState(column.isVisible() || (isIvmMtmv && isIvmRowIdColumn),
+                    "binlog<Row> only supports IVM row id hidden key column: " + column.getName());
+            hasIvmRowIdColumn = hasIvmRowIdColumn || isIvmRowIdColumn;
             Preconditions.checkState(!column.getType().isVariantType(),
                     "binlog<Row> does not support VARIANT column: " + column.getName());
             Preconditions.checkState(!column.isAutoInc(),
@@ -2439,6 +2448,8 @@ public class OlapTable extends Table implements MTMVRelatedTableIf, GsonPostProc
                 }
             }
         }
+        Preconditions.checkState(!isIvmMtmv || hasIvmRowIdColumn,
+                "IVM row binlog schema requires row id column: " + getName());
 
         if (needHistoricalValue) {
             Preconditions.checkState(keysType == KeysType.PRIMARY_KEYS
