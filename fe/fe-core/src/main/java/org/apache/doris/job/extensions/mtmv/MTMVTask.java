@@ -295,6 +295,13 @@ public class MTMVTask extends AbstractTask {
             for (RefreshAttemptType attemptType : buildAttempts(request)) {
                 switch (attemptType) {
                     case IVM:
+                        if (mtmv.isIvm()) {
+                            try {
+                                syncPartitionsIfNeeded(ctx, tableIfs);
+                            } catch (PartitionPlanningException e) {
+                                throw new JobException(e.getMessage(), e);
+                            }
+                        }
                         AttemptResultType ivmResult = executeIvmAttempt(request);
                         if (ivmResult == AttemptResultType.SUCCESS) {
                             return;

@@ -17,14 +17,18 @@
 
 package org.apache.doris.mtmv;
 
+import org.apache.doris.analysis.PartitionKeyDesc;
+import org.apache.doris.analysis.PartitionValue;
 import org.apache.doris.catalog.Column;
 import org.apache.doris.catalog.KeysType;
 import org.apache.doris.catalog.MTMV;
 import org.apache.doris.catalog.OlapTable;
+import org.apache.doris.catalog.TableIf;
 import org.apache.doris.catalog.info.TableNameInfo;
 import org.apache.doris.common.AnalysisException;
 import org.apache.doris.common.Config;
 import org.apache.doris.common.DdlException;
+import org.apache.doris.common.Pair;
 import org.apache.doris.common.FeConstants;
 import org.apache.doris.common.MetaNotFoundException;
 import org.apache.doris.common.jmockit.Deencapsulation;
@@ -35,6 +39,7 @@ import org.apache.doris.job.extensions.mtmv.MTMVTask.MTMVTaskTriggerMode;
 import org.apache.doris.job.extensions.mtmv.MTMVTaskContext;
 import org.apache.doris.mtmv.MTMVPartitionInfo.MTMVPartitionType;
 import org.apache.doris.mtmv.MTMVRefreshEnum.RefreshMethod;
+import org.apache.doris.mtmv.MTMVRefreshEnum.MTMVState;
 import org.apache.doris.mtmv.ivm.IvmException;
 import org.apache.doris.mtmv.ivm.IvmFailureReason;
 import org.apache.doris.mtmv.ivm.IvmInfo;
@@ -231,6 +236,47 @@ public class MTMVTaskTest {
                 Lists.newArrayList());
 
         mtmvPartitionUtilStatic.verify(() -> MTMVPartitionUtil.alignMvPartition(mtmv));
+    }
+
+    @Test
+    public void testIvmRefreshAlignsMvPartitionsBeforeIncrementalAttempt() throws Exception {
+        Mockito.when(mtmv.isIvm()).thenReturn(true);
+        Mockito.when(mtmv.getName()).thenReturn("test_mv");
+        Mockito.when(mtmv.getQuerySql()).thenReturn("select * from t");
+        Mockito.when(mtmv.getStatus()).thenReturn(new MTMVStatus(MTMVState.NORMAL, null));
+        Mockito.when(mtmv.hasRefreshSnapshot()).thenReturn(true);
+
+        TableIf baseTable = Mockito.mock(TableIf.class);
+        Mockito.when(baseTable.getId()).thenReturn(1L);
+        Pair<Set<TableIf>, Set<TableIf>> tablesInPlan = Pair.of(Sets.newHashSet(baseTable), Sets.newHashSet());
+        MTMVRelation generatedRelation = new MTMVRelation(Sets.newHashSet(), Sets.newHashSet(), Sets.newHashSet(),
+                Sets.newHashSet(), Sets.newHashSet());
+        PartitionKeyDesc newPartition = PartitionKeyDesc.createLessThan(
+                Lists.newArrayList(new PartitionValue("2020-01-01")));
+
+        MTMVTaskContext context = MTMVTaskContext.of(MTMVTaskTriggerMode.MANUAL, null,
+                RefreshMode.INCREMENTAL, false, null);
+        MTMVTask task = new MTMVTask(mtmv, relation, context);
+        task.before();
+
+        mtmvPartitionUtilStatic.when(() -> MTMVPartitionUtil.alignMvPartition(mtmv))
+                .thenReturn(Pair.of(Lists.newArrayList(), Lists.newArrayList(newPartition)));
+        try (MockedStatic<MTMVPlanUtil> mtmvPlanUtilStatic = Mockito.mockStatic(MTMVPlanUtil.class);
+                MockedConstruction<IvmRefreshManager> ignored = Mockito.mockConstruction(IvmRefreshManager.class,
+                        (mock, constructionContext) -> Mockito.when(mock.doRefresh(mtmv)).thenReturn(
+                                IvmRefreshResult.success()))) {
+            mtmvPlanUtilStatic.when(() -> MTMVPlanUtil.createMTMVContext(Mockito.eq(mtmv), Mockito.anyList()))
+                    .thenReturn(new ConnectContext());
+            mtmvPlanUtilStatic.when(() -> MTMVPlanUtil.getBaseTableFromQuery(Mockito.eq("select * from t"),
+                    Mockito.nullable(ConnectContext.class))).thenReturn(tablesInPlan);
+            mtmvPlanUtilStatic.when(() -> MTMVPlanUtil.generateMTMVRelation(Mockito.eq(tablesInPlan.first),
+                    Mockito.eq(tablesInPlan.second))).thenReturn(generatedRelation);
+
+            task.run();
+        }
+
+        mtmvPartitionUtilStatic.verify(() -> MTMVPartitionUtil.alignMvPartition(mtmv));
+        mtmvPartitionUtilStatic.verify(() -> MTMVPartitionUtil.addPartition(mtmv, newPartition));
     }
 
     @Test
