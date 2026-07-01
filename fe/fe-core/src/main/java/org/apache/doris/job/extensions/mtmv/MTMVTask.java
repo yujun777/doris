@@ -1081,15 +1081,15 @@ public class MTMVTask extends AbstractTask {
         if (mtmv.getRefreshInfo().getRefreshMethod() == RefreshMethod.COMPLETE) {
             return Lists.newArrayList(mtmv.getPartitionNames());
         }
+        // We need to use a newly generated relationship and cannot retrieve it using mtmv.getRelation()
+        // to avoid rebuilding the baseTable and causing a change in the tableId
+        boolean fresh = MTMVPartitionUtil.isMTMVSync(context, relation.getBaseTablesOneLevelAndFromView(),
+                mtmv.getExcludedTriggerTables());
+        if (fresh) {
+            return Lists.newArrayList();
+        }
         // current, if partitionType is SELF_MANAGE, we can only FULL refresh
         if (mtmv.getMvPartitionInfo().getPartitionType() == MTMVPartitionType.SELF_MANAGE) {
-            // We need to use a newly generated relationship and cannot retrieve it using mtmv.getRelation()
-            // to avoid rebuilding the baseTable and causing a change in the tableId
-            boolean fresh = MTMVPartitionUtil.isMTMVSync(context, relation.getBaseTablesOneLevelAndFromView(),
-                    mtmv.getExcludedTriggerTables());
-            if (fresh) {
-                return Lists.newArrayList();
-            }
             return Lists.newArrayList(mtmv.getPartitionNames());
         }
         // We need to use a newly generated relationship and cannot retrieve it using mtmv.getRelation()
