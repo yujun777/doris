@@ -394,16 +394,26 @@ public class MTMVTask extends AbstractTask {
                 // refresh must honor the user's requested refresh mode.
                 return new RefreshRequest(RefreshMode.COMPLETE, false, Lists.newArrayList(), false);
             }
-            return new RefreshRequest(RefreshMode.valueOf(refreshMethod.name()),
-                    mtmv.getRefreshInfo().allowFallback(), Lists.newArrayList(), false);
+            RefreshMode refreshMode = RefreshMode.valueOf(refreshMethod.name());
+            boolean allowFallback = mtmv.getRefreshInfo().allowFallback();
+            if (taskContext.getTriggerMode() == MTMVTaskTriggerMode.MANUAL
+                    && refreshMode == RefreshMode.INCREMENTAL) {
+                allowFallback = false;
+            }
+            return new RefreshRequest(refreshMode, allowFallback, Lists.newArrayList(), false);
         }
         if (!CollectionUtils.isEmpty(taskContext.getPartitions())) {
             // A partitionSpec is an exact manual request. It never falls back to
             // COMPLETE because that would refresh more data than the user asked.
             return new RefreshRequest(RefreshMode.PARTITIONS, false, taskContext.getPartitions(), true);
         }
-        return new RefreshRequest(taskContext.getRefreshMode(), taskContext.allowFallback(),
-                Lists.newArrayList(), false);
+        RefreshMode refreshMode = taskContext.getRefreshMode();
+        boolean allowFallback = taskContext.allowFallback();
+        if (taskContext.getTriggerMode() == MTMVTaskTriggerMode.MANUAL
+                && refreshMode == RefreshMode.INCREMENTAL) {
+            allowFallback = false;
+        }
+        return new RefreshRequest(refreshMode, allowFallback, Lists.newArrayList(), false);
     }
 
     private List<RefreshAttemptType> buildAttempts(RefreshRequest request) {
@@ -554,7 +564,7 @@ public class MTMVTask extends AbstractTask {
                     + " refresh on a materialized view without INCREMENTAL capability.");
         }
         if (!mtmv.hasRefreshSnapshot()) {
-            if (!request.allowFallback || taskContext.getTriggerMode() == MTMVTaskTriggerMode.MANUAL) {
+            if (!request.allowFallback) {
                 LOG.info("IVM refresh starts without refresh snapshot for mv={}, taskId={}",
                         mtmv.getName(), getTaskId());
             } else {
