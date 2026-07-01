@@ -67,6 +67,11 @@ suite("test_ivm_mtmv_row_binlog", "nonConcurrent") {
     """
 
     sql """SET show_hidden_columns = true;"""
+    qt_mv_binlog_row_ids """
+        SELECT __DORIS_IVM_ROW_ID_COL__, k1, v1
+        FROM binlog("table" = "test_ivm_mtmv_row_binlog_mv")
+        ORDER BY k1;
+    """
     def mvRowIdRows = sql """
         SELECT __DORIS_IVM_ROW_ID_COL__, k1, v1
         FROM test_ivm_mtmv_row_binlog_mv
