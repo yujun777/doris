@@ -234,6 +234,53 @@ public class MTMVTaskTest {
     }
 
     @Test
+    public void testPartitionRefreshReturnsNoopWhenMtmvIsFresh() throws Exception {
+        MTMVTask task = new MTMVTask(mtmv, relation, new MTMVTaskContext(MTMVTaskTriggerMode.MANUAL));
+
+        mtmvPartitionUtilStatic.when(() -> MTMVPartitionUtil.alignMvPartition(mtmv))
+                .thenReturn(org.apache.doris.common.Pair.of(Lists.newArrayList(), Lists.newArrayList()));
+        mtmvPartitionUtilStatic.when(() -> MTMVPartitionUtil.getBaseVersions(mtmv))
+                .thenReturn(new MTMVBaseVersions(Collections.emptyMap(), Collections.emptyMap()));
+        mtmvPartitionUtilStatic.when(() -> MTMVPartitionUtil.isMTMVSync(
+                Mockito.nullable(MTMVRefreshContext.class), Mockito.nullable(Set.class), Mockito.nullable(Set.class)))
+                .thenReturn(true);
+        Mockito.when(mtmv.calculatePartitionMappings()).thenReturn(Collections.emptyMap());
+
+        Object request = Deencapsulation.invoke(task, "resolveRefreshRequest");
+        Object plan = Deencapsulation.invoke(task, "planPartitionRefresh", Mockito.mock(ConnectContext.class),
+                Lists.newArrayList(), request);
+
+        Assert.assertTrue(Deencapsulation.getField(plan, "canRefreshByPartitions"));
+        Assert.assertTrue(((List<?>) Deencapsulation.getField(plan, "partitions")).isEmpty());
+        mtmvPartitionUtilStatic.verify(() -> MTMVPartitionUtil.getMTMVNeedRefreshPartitions(
+                Mockito.nullable(MTMVRefreshContext.class), Mockito.nullable(Set.class)), Mockito.never());
+    }
+
+    @Test
+    public void testPartitionRefreshFallbacksWhenFreshCheckFails() throws Exception {
+        MTMVTask task = new MTMVTask(mtmv, relation, new MTMVTaskContext(MTMVTaskTriggerMode.MANUAL));
+
+        mtmvPartitionUtilStatic.when(() -> MTMVPartitionUtil.alignMvPartition(mtmv))
+                .thenReturn(org.apache.doris.common.Pair.of(Lists.newArrayList(), Lists.newArrayList()));
+        mtmvPartitionUtilStatic.when(() -> MTMVPartitionUtil.getBaseVersions(mtmv))
+                .thenReturn(new MTMVBaseVersions(Collections.emptyMap(), Collections.emptyMap()));
+        mtmvPartitionUtilStatic.when(() -> MTMVPartitionUtil.isMTMVSync(
+                Mockito.nullable(MTMVRefreshContext.class), Mockito.nullable(Set.class), Mockito.nullable(Set.class)))
+                .thenThrow(new AnalysisException("fresh check failed"));
+        Mockito.when(mtmv.calculatePartitionMappings()).thenReturn(Collections.emptyMap());
+
+        Object request = Deencapsulation.invoke(task, "resolveRefreshRequest");
+        Object plan = Deencapsulation.invoke(task, "planPartitionRefresh", Mockito.mock(ConnectContext.class),
+                Lists.newArrayList(), request);
+
+        Assert.assertFalse(Deencapsulation.getField(plan, "canRefreshByPartitions"));
+        Assert.assertTrue(((String) Deencapsulation.getField(plan, "fallbackReason"))
+                .contains("fresh check failed"));
+        mtmvPartitionUtilStatic.verify(() -> MTMVPartitionUtil.getMTMVNeedRefreshPartitions(
+                Mockito.nullable(MTMVRefreshContext.class), Mockito.nullable(Set.class)), Mockito.never());
+    }
+
+    @Test
     public void testCalculateNeedRefreshPartitionsSystemNotSyncComplete() throws AnalysisException, JobException {
         mtmvPartitionUtilStatic.when(() -> MTMVPartitionUtil.isMTMVSync(Mockito.nullable(MTMVRefreshContext.class), Mockito.nullable(Set.class), Mockito.nullable(Set.class))).thenReturn(false);
         MTMVTaskContext context = new MTMVTaskContext(MTMVTaskTriggerMode.SYSTEM);

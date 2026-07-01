@@ -504,6 +504,16 @@ public class MTMVTask extends AbstractTask {
             return PartitionRefreshPlan.fallback(e.getMessage());
         }
         MTMVRefreshContext context = buildRefreshContext(tableIfs);
+        boolean fresh;
+        try {
+            fresh = MTMVPartitionUtil.isMTMVSync(context, relation.getBaseTablesOneLevelAndFromView(),
+                    mtmv.getExcludedTriggerTables());
+        } catch (Exception e) {
+            return PartitionRefreshPlan.fallback(e.getMessage());
+        }
+        if (fresh) {
+            return PartitionRefreshPlan.success(context, Lists.newArrayList());
+        }
         try {
             return PartitionRefreshPlan.success(context,
                     MTMVPartitionUtil.getMTMVNeedRefreshPartitions(context,
