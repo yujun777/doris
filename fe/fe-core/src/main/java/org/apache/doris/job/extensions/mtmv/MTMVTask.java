@@ -396,10 +396,6 @@ public class MTMVTask extends AbstractTask {
             }
             RefreshMode refreshMode = RefreshMode.valueOf(refreshMethod.name());
             boolean allowFallback = mtmv.getRefreshInfo().allowFallback();
-            if (taskContext.getTriggerMode() == MTMVTaskTriggerMode.MANUAL
-                    && refreshMode == RefreshMode.INCREMENTAL) {
-                allowFallback = false;
-            }
             return new RefreshRequest(refreshMode, allowFallback, Lists.newArrayList(), false);
         }
         if (!CollectionUtils.isEmpty(taskContext.getPartitions())) {
@@ -409,14 +405,14 @@ public class MTMVTask extends AbstractTask {
         }
         RefreshMode refreshMode = taskContext.getRefreshMode();
         boolean allowFallback = taskContext.allowFallback();
-        if (taskContext.getTriggerMode() == MTMVTaskTriggerMode.MANUAL
-                && refreshMode == RefreshMode.INCREMENTAL) {
-            allowFallback = false;
-        }
         return new RefreshRequest(refreshMode, allowFallback, Lists.newArrayList(), false);
     }
 
     private List<RefreshAttemptType> buildAttempts(RefreshRequest request) {
+        if (taskContext.getTriggerMode() == MTMVTaskTriggerMode.MANUAL
+                && request.refreshMode == RefreshMode.INCREMENTAL && !request.allowFallback) {
+            return Lists.newArrayList(RefreshAttemptType.IVM);
+        }
         List<RefreshAttemptType> attempts = Lists.newArrayList();
         switch (request.refreshMode) {
             case AUTO:

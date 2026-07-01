@@ -302,10 +302,10 @@ public class MTMVTaskTest {
     }
 
     @Test
-    public void testManualIncrementalFallbackUsesIvmAttemptOnly() throws JobException {
+    public void testManualIncrementalUsesIvmAttemptOnly() throws JobException {
         Mockito.when(mtmv.isIvm()).thenReturn(false);
         MTMVTaskContext context = MTMVTaskContext.of(MTMVTaskTriggerMode.MANUAL, null,
-                RefreshMode.INCREMENTAL, true, null);
+                RefreshMode.INCREMENTAL, false, null);
         MTMVTask task = new MTMVTask(mtmv, relation, context);
 
         Object request = Deencapsulation.invoke(task, "resolveRefreshRequest");
@@ -313,6 +313,21 @@ public class MTMVTaskTest {
 
         Assert.assertFalse(Deencapsulation.getField(request, "allowFallback"));
         Assert.assertEquals(Lists.newArrayList("IVM"), attempts.stream()
+                .map(Object::toString).collect(Collectors.toList()));
+    }
+
+    @Test
+    public void testManualIncrementalFallbackUsesFullFallbackChain() throws JobException {
+        Mockito.when(mtmv.isIvm()).thenReturn(true);
+        MTMVTaskContext context = MTMVTaskContext.of(MTMVTaskTriggerMode.MANUAL, null,
+                RefreshMode.INCREMENTAL, true, null);
+        MTMVTask task = new MTMVTask(mtmv, relation, context);
+
+        Object request = Deencapsulation.invoke(task, "resolveRefreshRequest");
+        List<?> attempts = Deencapsulation.invoke(task, "buildAttempts", request);
+
+        Assert.assertTrue(Deencapsulation.getField(request, "allowFallback"));
+        Assert.assertEquals(Lists.newArrayList("IVM", "PARTITIONS", "COMPLETE"), attempts.stream()
                 .map(Object::toString).collect(Collectors.toList()));
     }
 
