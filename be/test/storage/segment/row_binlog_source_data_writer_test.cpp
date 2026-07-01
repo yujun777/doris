@@ -24,6 +24,7 @@
 #include "core/field.h"
 #include "core/value/decimalv2_value.h"
 #include "storage/binlog.h"
+#include "storage/iterator/olap_data_convertor.h"
 #include "storage/segment/row_binlog_segment_writer.h"
 #include "storage/tablet/tablet_schema.h"
 
