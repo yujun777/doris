@@ -393,13 +393,6 @@ public class MTMVTask extends AbstractTask {
                 throw new JobException("MTMV " + mtmv.getName()
                         + " has unknown refresh method, please refresh or recreate it.");
             }
-            if (taskContext.getTriggerMode() != MTMVTaskTriggerMode.MANUAL
-                    && refreshMethod == RefreshMethod.INCREMENTAL && mtmv.isIvm() && !mtmv.hasRefreshSnapshot()) {
-                // Default-policy system/on-commit tasks may be the MV's first
-                // execution. Build the initial baseline with COMPLETE; manual
-                // refresh must honor the user's requested refresh mode.
-                return new RefreshRequest(RefreshMode.COMPLETE, false, Lists.newArrayList(), false);
-            }
             RefreshMode refreshMode = RefreshMode.valueOf(refreshMethod.name());
             boolean allowFallback = mtmv.getRefreshInfo().allowFallback();
             return new RefreshRequest(refreshMode, allowFallback, Lists.newArrayList(), false);
@@ -415,6 +408,10 @@ public class MTMVTask extends AbstractTask {
     }
 
     private List<RefreshAttemptType> buildAttempts(RefreshRequest request) {
+        if (taskContext.getTriggerMode() != MTMVTaskTriggerMode.MANUAL
+                && mtmv.isIvm() && !mtmv.hasRefreshSnapshot()) {
+            return Lists.newArrayList(RefreshAttemptType.COMPLETE);
+        }
         if (taskContext.getTriggerMode() == MTMVTaskTriggerMode.MANUAL
                 && request.refreshMode == RefreshMode.INCREMENTAL && !request.allowFallback) {
             return Lists.newArrayList(RefreshAttemptType.IVM);

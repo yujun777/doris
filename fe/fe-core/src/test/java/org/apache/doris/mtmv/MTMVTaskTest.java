@@ -704,8 +704,12 @@ public class MTMVTaskTest {
         MTMVTask task = new MTMVTask(mtmv, relation, context);
 
         Object request = Deencapsulation.invoke(task, "resolveRefreshRequest");
-        Assert.assertEquals(RefreshMode.COMPLETE, Deencapsulation.getField(request, "refreshMode"));
+        List<?> attempts = Deencapsulation.invoke(task, "buildAttempts", request);
+
+        Assert.assertEquals(RefreshMode.INCREMENTAL, Deencapsulation.getField(request, "refreshMode"));
         Assert.assertFalse(Deencapsulation.getField(request, "allowFallback"));
+        Assert.assertEquals(Lists.newArrayList("COMPLETE"), attempts.stream()
+                .map(Object::toString).collect(Collectors.toList()));
     }
 
     @Test
