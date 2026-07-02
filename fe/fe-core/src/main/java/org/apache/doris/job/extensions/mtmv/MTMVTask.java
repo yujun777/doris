@@ -291,17 +291,16 @@ public class MTMVTask extends AbstractTask {
             // refresh fallback: incompatible MV definitions must fail directly.
             ensureQueryUsableIfNeeded(ctx, tableIfs);
             RefreshRequest request = resolveRefreshRequest();
+            List<RefreshAttemptType> attempts = buildAttempts(request);
+            try {
+                syncPartitionsIfNeeded(ctx, tableIfs);
+            } catch (PartitionPlanningException e) {
+                throw new JobException(e.getMessage(), e);
+            }
             boolean disablePartitionRefresh = false;
-            for (RefreshAttemptType attemptType : buildAttempts(request)) {
+            for (RefreshAttemptType attemptType : attempts) {
                 switch (attemptType) {
                     case IVM:
-                        if (mtmv.isIvm()) {
-                            try {
-                                syncPartitionsIfNeeded(ctx, tableIfs);
-                            } catch (PartitionPlanningException e) {
-                                throw new JobException(e.getMessage(), e);
-                            }
-                        }
                         AttemptResultType ivmResult = executeIvmAttempt(request);
                         if (ivmResult == AttemptResultType.SUCCESS) {
                             return;
@@ -314,12 +313,12 @@ public class MTMVTask extends AbstractTask {
                         if (disablePartitionRefresh) {
                             break;
                         }
-                        if (executePartitionBasedRefresh(ctx, tableIfs, request)) {
+                        if (executePartitionBasedRefresh(tableIfs, request)) {
                             return;
                         }
                         break;
                     case COMPLETE:
-                        executeCompleteAttempt(ctx, tableIfs);
+                        executeCompleteAttempt(tableIfs);
                         return;
                     default:
                         throw new JobException("Unsupported refresh attempt type: " + attemptType);
@@ -487,8 +486,8 @@ public class MTMVTask extends AbstractTask {
         return attempts;
     }
 
-    private PartitionRefreshPlan planPartitionRefresh(ConnectContext ctx, List<TableIf> tableIfs,
-            RefreshRequest request) throws JobException, AnalysisException, DdlException {
+    private PartitionRefreshPlan planPartitionRefresh(List<TableIf> tableIfs, RefreshRequest request)
+            throws AnalysisException {
         if (mtmv.isIvm() && mtmv.getIvmInfo().isRunningIvmRefresh()) {
             // A failed IVM run may have written partial delta data. Only a
             // COMPLETE refresh can be used as recovery; PARTITIONS is skipped.
@@ -496,11 +495,6 @@ public class MTMVTask extends AbstractTask {
                     "A previous incremental refresh did not complete; full refresh is required");
         }
         if (request.explicitPartitions) {
-            try {
-                syncPartitionsIfNeeded(ctx, tableIfs);
-            } catch (PartitionPlanningException e) {
-                return PartitionRefreshPlan.fallback(e.getMessage());
-            }
             MTMVRefreshContext context = buildRefreshContext(tableIfs);
             return PartitionRefreshPlan.success(context, request.partitions);
         }
@@ -510,11 +504,6 @@ public class MTMVTask extends AbstractTask {
             return PartitionRefreshPlan.fallback(
                     "The partition method of this asynchronous materialized view "
                             + "does not support refreshing by partition");
-        }
-        try {
-            syncPartitionsIfNeeded(ctx, tableIfs);
-        } catch (PartitionPlanningException e) {
-            return PartitionRefreshPlan.fallback(e.getMessage());
         }
         MTMVRefreshContext context = buildRefreshContext(tableIfs);
         boolean fresh;
@@ -545,13 +534,8 @@ public class MTMVTask extends AbstractTask {
         }
     }
 
-    private void executeCompleteAttempt(ConnectContext ctx, List<TableIf> tableIfs)
-            throws JobException, AnalysisException, DdlException {
-        try {
-            syncPartitionsIfNeeded(ctx, tableIfs);
-        } catch (PartitionPlanningException e) {
-            throw new JobException(e.getMessage(), e);
-        }
+    private void executeCompleteAttempt(List<TableIf> tableIfs)
+            throws JobException, AnalysisException {
         MTMVRefreshContext context = buildRefreshContext(tableIfs);
         this.needRefreshPartitions = Lists.newArrayList(mtmv.getPartitionNames());
         this.refreshMode = generateRefreshMode(needRefreshPartitions);
@@ -638,9 +622,9 @@ public class MTMVTask extends AbstractTask {
         return AttemptResultType.FALLBACK_ALLOWED;
     }
 
-    private boolean executePartitionBasedRefresh(ConnectContext ctx, List<TableIf> tableIfs,
-            RefreshRequest request) throws JobException, AnalysisException, DdlException {
-        PartitionRefreshPlan partitionPlan = planPartitionRefresh(ctx, tableIfs, request);
+    private boolean executePartitionBasedRefresh(List<TableIf> tableIfs, RefreshRequest request)
+            throws JobException, AnalysisException {
+        PartitionRefreshPlan partitionPlan = planPartitionRefresh(tableIfs, request);
         if (!partitionPlan.canRefreshByPartitions) {
             if (request.allowFallback) {
                 LOG.warn("MTMV partition refresh fell back for mv={}, reason={}, taskId={}",
