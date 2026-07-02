@@ -269,9 +269,19 @@ public class LogicalOlapTableStreamScan extends LogicalOlapScan {
                         partitionPrunablePredicates, scanParams, isNormalized, isIncrementalScan));
     }
 
-    /**
-     * withIncrementalScan
-     */
+    @Override
+    public LogicalOlapTableStreamScan withRelationId(RelationId relationId) {
+        return AbstractPlan.copyWithSameId(this, () ->
+                new LogicalOlapTableStreamScan(relationId, (Table) table, qualifier,
+                        groupExpression, Optional.of(getLogicalProperties()),
+                        selectedPartitionIds, partitionPruned, hasPartitionPredicate, selectedTabletIds,
+                        selectedIndexId, indexSelected, preAggStatus, manuallySpecifiedPartitions,
+                        hints, cacheSlotWithSlotName, cachedOutput, tableSample, directMvScan,
+                        colToSubPathsMap, manuallySpecifiedTabletIds, operativeSlots, virtualColumns,
+                        scoreOrderKeys, scoreLimit, scoreRangeInfo, annOrderKeys, annLimit, tableAlias,
+                        partitionPrunablePredicates, scanParams, isNormalized, isIncrementalScan));
+    }
+
     public LogicalOlapTableStreamScan withIncrementalScan(boolean isIncrementalScan) {
         return AbstractPlan.copyWithSameId(this, () ->
                 new LogicalOlapTableStreamScan(relationId, (Table) table, qualifier,

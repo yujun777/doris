@@ -19,6 +19,7 @@ package org.apache.doris.mtmv.ivm;
 
 import org.apache.doris.catalog.Column;
 import org.apache.doris.catalog.Env;
+import org.apache.doris.catalog.KeysType;
 import org.apache.doris.catalog.OlapTable;
 import org.apache.doris.catalog.TableIf;
 import org.apache.doris.catalog.info.TableNameInfo;
@@ -29,24 +30,36 @@ import org.apache.doris.info.TableNameInfoUtils;
 import org.apache.doris.mtmv.MTMVPartitionUtil;
 import org.apache.doris.mtmv.ivm.agg.IvmAggMeta;
 import org.apache.doris.nereids.exceptions.AnalysisException;
+import org.apache.doris.nereids.rules.exploration.join.JoinReorderContext;
 import org.apache.doris.nereids.trees.expressions.Alias;
+import org.apache.doris.nereids.trees.expressions.EqualTo;
 import org.apache.doris.nereids.trees.expressions.ExprId;
 import org.apache.doris.nereids.trees.expressions.Expression;
+import org.apache.doris.nereids.trees.expressions.GreaterThan;
+import org.apache.doris.nereids.trees.expressions.IsNull;
+import org.apache.doris.nereids.trees.expressions.LessThan;
 import org.apache.doris.nereids.trees.expressions.NamedExpression;
 import org.apache.doris.nereids.trees.expressions.Slot;
 import org.apache.doris.nereids.trees.expressions.SlotReference;
 import org.apache.doris.nereids.trees.expressions.StatementScopeIdGenerator;
+import org.apache.doris.nereids.trees.expressions.functions.scalar.If;
 import org.apache.doris.nereids.trees.expressions.literal.NullLiteral;
+import org.apache.doris.nereids.trees.expressions.literal.TinyIntLiteral;
 import org.apache.doris.nereids.trees.expressions.visitor.DefaultExpressionRewriter;
+import org.apache.doris.nereids.trees.plans.JoinType;
 import org.apache.doris.nereids.trees.plans.Plan;
 import org.apache.doris.nereids.trees.plans.commands.Command;
 import org.apache.doris.nereids.trees.plans.logical.LogicalAggregate;
+import org.apache.doris.nereids.trees.plans.logical.LogicalFilter;
+import org.apache.doris.nereids.trees.plans.logical.LogicalJoin;
 import org.apache.doris.nereids.trees.plans.logical.LogicalOlapScan;
 import org.apache.doris.nereids.trees.plans.logical.LogicalOlapTableStreamScan;
 import org.apache.doris.nereids.trees.plans.logical.LogicalProject;
+import org.apache.doris.nereids.trees.plans.logical.LogicalSubQueryAlias;
 
 import com.google.common.base.Preconditions;
 import com.google.common.collect.ImmutableList;
+import com.google.common.collect.ImmutableSet;
 
 import java.util.ArrayList;
 import java.util.Collections;
@@ -85,15 +98,11 @@ public class IvmDeltaRewriter {
     public List<Command> rewrite(Plan normalizedPlan, IvmRefreshContext ctx) {
         Set<TableNameInfo> excluded = ctx.getMtmv().getExcludedTriggerTables();
         Predicate<LogicalOlapScan> isExcluded = scan -> isExcludedTriggerTable(scan, excluded);
-        Plan mergedPlan = generateMergedDeltaPlan(normalizedPlan, ctx, isExcluded, false);
-        if (mergedPlan == null) {
+        Plan finalPlan = generateMergedDeltaPlan(normalizedPlan, ctx, isExcluded, false);
+        if (finalPlan == null) {
             return Collections.emptyList();
         }
-        // sink + command
-        Slot dmlSlot = helper.findSlotByName(mergedPlan.getOutput(), Column.IVM_DML_FACTOR_COL);
-        IvmDeltaRewriteResult finalResult = new IvmDeltaRewriteResult(mergedPlan, dmlSlot);
-        Plan sinkPlan = helper.buildSinkProject(finalResult, ctx);
-        return ImmutableList.of(IvmDeltaCommandBuilder.INSTANCE.buildCommandWithDeleteSign(sinkPlan, ctx));
+        return ImmutableList.of(IvmDeltaCommandBuilder.INSTANCE.buildCommandWithDeleteSign(finalPlan, ctx));
     }
 
     /**
@@ -136,9 +145,6 @@ public class IvmDeltaRewriter {
         }
 
         // --- Step 3: per-table visitor rewrite ---
-        // Each delta plan is an independent subtree whose ExprIds come from the same
-        // normalized plan ancestor. helper.buildUnionAll creates synthetic output slots
-        // so children's overlapping ExprIds do not leak into the union output.
         IvmDeltaRewriteVisitor visitor = new IvmDeltaRewriteVisitor();
         List<Plan> rewrittenPlans = new ArrayList<>();
         for (Plan deltaPlan : deltaPlans) {
@@ -154,13 +160,19 @@ public class IvmDeltaRewriter {
             mergedPlan = helper.buildUnionAll(rewrittenPlans);
         }
 
-        // --- Step 5 (AGG only): re-attach AGG, call aggHandler directly ---
         if (isAgg) {
+            // --- Step 5 (AGG only): re-attach AGG, call aggHandler directly ---
             mergedPlan = reattachAggAndProcess(savedAgg, workPlan, mergedPlan, aggMeta, ctx);
             // --- Step 6 (AGG only): rebuild above-AGG chain bottom-up ---
             mergedPlan = rebuildAboveAggChain(savedChain, mergedPlan);
+        } else if (hasMowIncrementalStreamScan(mergedPlan)) {
+            // --- Step 5 (non-AGG): binlog order rewrite ---
+            mergedPlan = applyBinlogOrderRewrite(mergedPlan, ctx);
         }
 
+        // --- Final step: dml_factor → delete_sign (all paths converge here) ---
+        Slot dmlSlot = helper.findSlotByName(mergedPlan.getOutput(), Column.IVM_DML_FACTOR_COL);
+        mergedPlan = helper.buildSinkProject(new IvmDeltaRewriteResult(mergedPlan, dmlSlot, null), ctx);
         return mergedPlan;
     }
 
@@ -178,7 +190,8 @@ public class IvmDeltaRewriter {
         Map<ExprId, ExprId> mapping = buildPositionalMap(aggChild.getOutput(), mergedPlan.getOutput());
         LogicalAggregate<?> remappedAgg = remapAggSlots(savedAgg, mapping);
         Slot dmlSlot = helper.findSlotByName(mergedPlan.getOutput(), Column.IVM_DML_FACTOR_COL);
-        IvmDeltaRewriteResult childResult = new IvmDeltaRewriteResult(mergedPlan, dmlSlot);
+        Slot baseOpSlot = helper.findSlotByNameOrNull(mergedPlan.getOutput(), Column.IVM_BASE_OP_COL);
+        IvmDeltaRewriteResult childResult = new IvmDeltaRewriteResult(mergedPlan, dmlSlot, baseOpSlot);
         return aggHandler.rewriteAggregate(remappedAgg, childResult, ctx).plan;
     }
 
@@ -486,6 +499,71 @@ public class IvmDeltaRewriter {
         } catch (Exception e) {
             return null;
         }
+    }
+
+    /**
+     * Checks whether the merged delta plan contains an incremental stream scan on a MOW table.
+     * Only non-AGG MVs with MOW base table deltas need the binlog order rewrite.
+     */
+    private boolean hasMowIncrementalStreamScan(Plan mergedPlan) {
+        return mergedPlan.anyMatch(node -> {
+            if (!(node instanceof LogicalOlapTableStreamScan)) {
+                return false;
+            }
+            LogicalOlapTableStreamScan streamScan = (LogicalOlapTableStreamScan) node;
+            if (!streamScan.isIncrementalScan()) {
+                return false;
+            }
+            TableIf table = streamScan.getTable();
+            if (table instanceof OlapTable) {
+                return ((OlapTable) table).getKeysType() == KeysType.UNIQUE_KEYS;
+            }
+            return false;
+        });
+    }
+
+    /**
+     * Wraps the merged delta plan with CTE + split + FULL OUTER JOIN + IF(isnull) Project
+     * to ensure delete rows are processed before insert rows for the same key.
+     * This replaces the Sort approach, avoiding full-data spill in AP scenarios.
+     */
+    Plan applyBinlogOrderRewrite(Plan mergedPlan, IvmRefreshContext ctx) {
+        Slot rowIdSlot = IvmUtil.findRowIdSlot(mergedPlan.getOutput(), "merged delta plan");
+
+        // ① Deep-copy for two branches
+        Plan insertPlan = helper.freshPlan(mergedPlan).first;
+        Plan deletePlan = helper.freshPlan(mergedPlan).first;
+
+        // ② Split: filter by baseOp, wrapped in SubQueryAlias.
+        //    SubQueryAlias isolates children from BindExpression.checkConflictAlias.
+        //    ALL slots below come from the SubQueryAlias output, not the inner plan.
+        Slot insertBaseOp = helper.findSlotByName(insertPlan.getOutput(), Column.IVM_BASE_OP_COL);
+        Slot deleteBaseOp = helper.findSlotByName(deletePlan.getOutput(), Column.IVM_BASE_OP_COL);
+        Plan insertBranch = new LogicalSubQueryAlias<>("__doris_ivm_insert",
+                new LogicalFilter<>(ImmutableSet.of(
+                        new GreaterThan(insertBaseOp, new TinyIntLiteral((byte) 0))), insertPlan));
+        Plan deleteBranch = new LogicalSubQueryAlias<>("__doris_ivm_delete",
+                new LogicalFilter<>(ImmutableSet.of(
+                        new LessThan(deleteBaseOp, new TinyIntLiteral((byte) 0))), deletePlan));
+
+        Slot insertRowId = helper.findSlotByName(insertBranch.getOutput(), rowIdSlot.getName());
+        Slot deleteRowId = helper.findSlotByName(deleteBranch.getOutput(), rowIdSlot.getName());
+
+        // ③ FULL OUTER JOIN on row_id
+        LogicalJoin<Plan, Plan> foj = new LogicalJoin<>(JoinType.FULL_OUTER_JOIN,
+                ImmutableList.of(new EqualTo(insertRowId, deleteRowId)), ImmutableList.of(),
+                insertBranch, deleteBranch, JoinReorderContext.EMPTY);
+
+        // ④ Final Project: every column through IF(insert.row_id IS NULL, delete.col, insert.col)
+        List<Slot> outputs = insertBranch.getOutput();
+        ImmutableList.Builder<NamedExpression> finalProjects = ImmutableList.builderWithExpectedSize(
+                outputs.size());
+        for (Slot col : outputs) {
+            Slot deleteCol = helper.findSlotByName(deleteBranch.getOutput(), col.getName());
+            finalProjects.add(new Alias(col.getExprId(),
+                    new If(new IsNull(insertRowId), deleteCol, col), col.getName()));
+        }
+        return new LogicalProject<>(finalProjects.build(), foj);
     }
 
     boolean isExcludedTriggerTable(LogicalOlapScan scan, Set<TableNameInfo> excludedTriggerTables) {
