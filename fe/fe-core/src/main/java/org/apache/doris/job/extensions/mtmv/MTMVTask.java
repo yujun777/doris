@@ -393,28 +393,22 @@ public class MTMVTask extends AbstractTask {
                 throw new JobException("MTMV " + mtmv.getName()
                         + " has unknown refresh method, please refresh or recreate it.");
             }
-            RefreshMode refreshMode = RefreshMode.valueOf(refreshMethod.name());
-            boolean allowFallback = mtmv.getRefreshInfo().allowFallback();
-            return new RefreshRequest(refreshMode, allowFallback, Lists.newArrayList(), false);
+            return new RefreshRequest(RefreshMode.valueOf(refreshMethod.name()),
+                    mtmv.getRefreshInfo().allowFallback(), Lists.newArrayList(), false);
         }
         if (!CollectionUtils.isEmpty(taskContext.getPartitions())) {
             // A partitionSpec is an exact manual request. It never falls back to
             // COMPLETE because that would refresh more data than the user asked.
             return new RefreshRequest(RefreshMode.PARTITIONS, false, taskContext.getPartitions(), true);
         }
-        RefreshMode refreshMode = taskContext.getRefreshMode();
-        boolean allowFallback = taskContext.allowFallback();
-        return new RefreshRequest(refreshMode, allowFallback, Lists.newArrayList(), false);
+        return new RefreshRequest(taskContext.getRefreshMode(), taskContext.allowFallback(),
+                Lists.newArrayList(), false);
     }
 
     private List<RefreshAttemptType> buildAttempts(RefreshRequest request) {
         if (taskContext.getTriggerMode() != MTMVTaskTriggerMode.MANUAL
                 && mtmv.isIvm() && !mtmv.hasRefreshSnapshot()) {
             return Lists.newArrayList(RefreshAttemptType.COMPLETE);
-        }
-        if (taskContext.getTriggerMode() == MTMVTaskTriggerMode.MANUAL
-                && request.refreshMode == RefreshMode.INCREMENTAL && !request.allowFallback) {
-            return Lists.newArrayList(RefreshAttemptType.IVM);
         }
         List<RefreshAttemptType> attempts = Lists.newArrayList();
         switch (request.refreshMode) {
