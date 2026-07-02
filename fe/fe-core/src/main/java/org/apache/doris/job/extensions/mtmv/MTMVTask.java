@@ -547,17 +547,6 @@ public class MTMVTask extends AbstractTask {
             throw new JobException("Cannot use " + request.refreshMode
                     + " refresh on a materialized view without INCREMENTAL capability.");
         }
-        if (!mtmv.hasRefreshSnapshot()) {
-            if (!request.allowFallback) {
-                LOG.info("IVM refresh starts without refresh snapshot for mv={}, taskId={}",
-                        mtmv.getName(), getTaskId());
-            } else {
-                ivmFallbackReason = "INCOMPLETE_REFRESH_SNAPSHOT";
-                LOG.warn("IVM refresh fell back for mv={}, reason=INCOMPLETE_REFRESH_SNAPSHOT, taskId={}. "
-                        + "Continuing with COMPLETE refresh.", mtmv.getName(), getTaskId());
-                return AttemptResultType.FALLBACK_TO_COMPLETE;
-            }
-        }
         IvmRefreshManager ivmRefreshManager = new IvmRefreshManager();
         ivmFallbackPlanSignature = null;
         ivmFallbackPlanCanonicalString = null;
