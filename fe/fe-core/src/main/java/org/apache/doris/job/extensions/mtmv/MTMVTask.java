@@ -443,46 +443,6 @@ public class MTMVTask extends AbstractTask {
         return attempts;
     }
 
-    private List<RefreshAttemptType> buildAutoAttempts() {
-        RefreshMethod refreshMethod = mtmv.getRefreshInfo().getRefreshMethod();
-        if (refreshMethod == null) {
-            throw new IllegalStateException("Unsupported refresh method: null");
-        }
-        List<RefreshAttemptType> attempts = Lists.newArrayList();
-        switch (refreshMethod) {
-            case COMPLETE:
-                attempts.add(RefreshAttemptType.COMPLETE);
-                break;
-            case PARTITIONS:
-                attempts.add(RefreshAttemptType.PARTITIONS);
-                attempts.add(RefreshAttemptType.COMPLETE);
-                break;
-            case INCREMENTAL:
-                if (!mtmv.isIvm()) {
-                    throw new IllegalStateException("INCREMENTAL refresh policy requires INCREMENTAL capability");
-                }
-                attempts.add(RefreshAttemptType.IVM);
-                attempts.add(RefreshAttemptType.PARTITIONS);
-                attempts.add(RefreshAttemptType.COMPLETE);
-                break;
-            case AUTO:
-                if (mtmv.isIvm()) {
-                    attempts.add(RefreshAttemptType.IVM);
-                    attempts.add(RefreshAttemptType.PARTITIONS);
-                    attempts.add(RefreshAttemptType.COMPLETE);
-                } else if (mtmv.getMvPartitionInfo().getPartitionType() != MTMVPartitionType.SELF_MANAGE) {
-                    attempts.add(RefreshAttemptType.PARTITIONS);
-                    attempts.add(RefreshAttemptType.COMPLETE);
-                } else {
-                    attempts.add(RefreshAttemptType.COMPLETE);
-                }
-                break;
-            default:
-                throw new IllegalStateException("Unsupported refresh method: " + refreshMethod);
-        }
-        return attempts;
-    }
-
     private PartitionRefreshPlan planPartitionRefresh(List<TableIf> tableIfs, RefreshRequest request)
             throws AnalysisException {
         if (mtmv.isIvm() && mtmv.getIvmInfo().isRunningIvmRefresh()) {
