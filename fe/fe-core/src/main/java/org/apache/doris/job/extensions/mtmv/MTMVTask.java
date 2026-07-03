@@ -413,7 +413,13 @@ public class MTMVTask extends AbstractTask {
         List<RefreshAttemptType> attempts = Lists.newArrayList();
         switch (request.refreshMode) {
             case AUTO:
-                attempts.addAll(buildAutoAttempts());
+                if (mtmv.isIvm()) {
+                    attempts.add(RefreshAttemptType.IVM);
+                }
+                // AUTO always has the full fallback chain. If the MV was created
+                // as non-IVM, it starts from PARTITIONS and may end at COMPLETE.
+                attempts.add(RefreshAttemptType.PARTITIONS);
+                attempts.add(RefreshAttemptType.COMPLETE);
                 break;
             case INCREMENTAL:
                 attempts.add(RefreshAttemptType.IVM);
