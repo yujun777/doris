@@ -127,4 +127,25 @@ suite("test_ivm_internal_stream_guard", "mtmv") {
         sql """INSERT INTO ivm_stream_guard_target SELECT k1, v1 FROM `${stream1}`"""
         exception "IVM internal table stream cannot be used in INSERT INTO"
     }
+
+    sql """
+        ALTER MATERIALIZED VIEW ivm_stream_guard_mv
+        SET ("excluded_trigger_tables" = "ivm_stream_guard_t1");
+    """
+
+    def streamsAfterSwap = sql """
+        SELECT STREAM_NAME, BASE_TABLE_NAME
+        FROM information_schema.table_streams
+        WHERE DB_NAME = '${context.dbName}'
+          AND STREAM_NAME IN ('${stream1}', '${stream2}')
+        ORDER BY STREAM_NAME
+    """
+    assertEquals(1, streamsAfterSwap.size())
+    assertEquals(stream2, streamsAfterSwap[0][0].toString())
+    assertEquals("ivm_stream_guard_t2", streamsAfterSwap[0][1].toString())
+
+    test {
+        sql """INSERT INTO ivm_stream_guard_target SELECT k1, v2 FROM `${stream2}`"""
+        exception "IVM internal table stream cannot be used in INSERT INTO"
+    }
 }
