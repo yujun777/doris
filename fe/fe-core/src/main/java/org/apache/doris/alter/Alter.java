@@ -1400,18 +1400,25 @@ public class Alter {
             return;
         }
         Set<BaseTableInfo> baseTables = relation.getBaseTables();
-        if (!isReplay) {
-            for (BaseTableInfo baseTableInfo : baseTables) {
-                TableNameInfo baseTableName = new TableNameInfo(baseTableInfo.getCtlName(),
-                        baseTableInfo.getDbName(), baseTableInfo.getTableName());
-                if (!MTMVPartitionUtil.isTableExcluded(oldExcludedTriggerTables, baseTableName)
-                        || MTMVPartitionUtil.isTableExcluded(newExcludedTriggerTables, baseTableName)) {
-                    continue;
+        boolean hasNewlyIncludedBaseTable = false;
+        for (BaseTableInfo baseTableInfo : baseTables) {
+            TableNameInfo baseTableName = new TableNameInfo(baseTableInfo.getCtlName(),
+                    baseTableInfo.getDbName(), baseTableInfo.getTableName());
+            boolean wasExcluded = MTMVPartitionUtil.isTableExcluded(
+                    oldExcludedTriggerTables, baseTableName);
+            boolean isExcluded = MTMVPartitionUtil.isTableExcluded(
+                    newExcludedTriggerTables, baseTableName);
+            if (wasExcluded && !isExcluded) {
+                hasNewlyIncludedBaseTable = true;
+                if (!isReplay) {
+                    TableIf baseTable = MTMVUtil.getTable(baseTableInfo);
+                    CreateMTMVCommand.createTableStream(ConnectContext.get(), db, mtmv, baseTable,
+                            baseTableInfo.getDbName());
                 }
-                TableIf baseTable = MTMVUtil.getTable(baseTableInfo);
-                CreateMTMVCommand.createTableStream(ConnectContext.get(), db, mtmv, baseTable,
-                        baseTableInfo.getDbName());
             }
+        }
+        if (hasNewlyIncludedBaseTable) {
+            mtmv.markIvmBinlogBroken();
         }
         if (!db.writeLockIfExist()) {
             return;
