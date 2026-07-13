@@ -633,6 +633,7 @@ public class MTMVPlanUtil {
         if (relation == null || relation.getBaseTables() == null) {
             return;
         }
+        // A base table removed from excluded_trigger_tables starts participating in incremental refresh.
         boolean includesNewTriggerTable = relation.getBaseTables().stream().anyMatch(baseTableInfo -> {
             TableNameInfo baseTableName = new TableNameInfo(baseTableInfo.getCtlName(),
                     baseTableInfo.getDbName(), baseTableInfo.getTableName());
@@ -643,6 +644,7 @@ public class MTMVPlanUtil {
             return;
         }
         try {
+            // Exclusions affect IVM normalization, so validate the complete MV plan with the new properties.
             analyzeQueryWithSql(mtmv, ctx, mvProperties, Optional.of(IvmRewriteContext.normalize(mtmv)));
         } catch (UserException e) {
             throw new AnalysisException(e.getMessage(), e);
