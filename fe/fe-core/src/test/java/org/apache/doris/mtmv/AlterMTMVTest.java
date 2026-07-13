@@ -265,6 +265,7 @@ public class AlterMTMVTest extends TestWithFeService {
 
     @Test
     public void testAlterIvmInfoPersistence() throws Exception {
+        Config.enable_table_stream = true;
         createDatabaseAndUse("alter_ivm_test");
         createTable("CREATE TABLE alter_ivm_test.ivm_base (k1 int, v1 int)\n"
                 + "DUPLICATE KEY(k1)\n"
