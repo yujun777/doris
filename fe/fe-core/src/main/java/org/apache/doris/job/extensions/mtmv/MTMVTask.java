@@ -623,6 +623,7 @@ public class MTMVTask extends AbstractTask {
         int refreshPartitionNum = mtmv.getRefreshPartitionNum();
         long execNum = (needRefreshPartitions.size() / refreshPartitionNum) + ((needRefreshPartitions.size()
                 % refreshPartitionNum) > 0 ? 1 : 0);
+        boolean refreshAllPartitions = Sets.newHashSet(needRefreshPartitions).equals(mtmv.getPartitionNames());
         this.partitionSnapshots = Maps.newConcurrentMap();
         for (int i = 0; i < execNum; i++) {
             int start = i * refreshPartitionNum;
@@ -633,7 +634,7 @@ public class MTMVTask extends AbstractTask {
                     ? collectPctResetPartitionIds(context, execPartitionNames) : Maps.newHashMap();
             Optional<IvmRewriteContext> rewriteContext = Optional.empty();
             if (useIvmFallbackStreams) {
-                StreamReadMode nonPctReadMode = i == 0 && refreshMode == MTMVTaskRefreshMode.COMPLETE
+                StreamReadMode nonPctReadMode = i == 0 && refreshAllPartitions
                         ? StreamReadMode.RESET : StreamReadMode.SNAPSHOT;
                 rewriteContext = Optional.of(
                         IvmRewriteContext.full(mtmv, batchResetPartitionIds, nonPctReadMode));

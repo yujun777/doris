@@ -201,7 +201,9 @@ suite("test_ivm_fallback_stream_multi_batch", "nonConcurrent") {
         assertLagUnits([])
     }
 
-    sql """REFRESH MATERIALIZED VIEW ivm_fbs_mb_mv COMPLETE"""
+    // A PARTITIONS request on an uninitialized MV covers every MV partition and must
+    // reset the shared non-PCT stream offset in the first batch.
+    sql """REFRESH MATERIALIZED VIEW ivm_fbs_mb_mv PARTITIONS"""
     waitingMTMVTaskFinishedByMvName("ivm_fbs_mb_mv")
     assertLatestRefreshTask("COMPLETE", null, 2)
     assertMvEqualsBase()
