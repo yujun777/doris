@@ -2180,6 +2180,38 @@ public class CreateMTMVCommandTest extends TestWithFeService {
     }
 
     @Test
+    public void testAlterExcludedTriggerTablesStopsWhenDatabaseDropped() throws Exception {
+        createIvmMowTable("ivm_dropped_db_stream_base");
+        createMtmv("CREATE MATERIALIZED VIEW ivm_dropped_db_stream_mv\n"
+                + " BUILD DEFERRED REFRESH INCREMENTAL ON MANUAL\n"
+                + " DISTRIBUTED BY RANDOM BUCKETS 2\n"
+                + " PROPERTIES ('replication_num' = '1')\n"
+                + " AS SELECT k1, v1 FROM ivm_dropped_db_stream_base;");
+        MTMV mtmv = getMtmv("ivm_dropped_db_stream_mv");
+        Database db = Env.getCurrentInternalCatalog().getDbOrDdlException("test");
+        String streamName = IvmUtil.streamName(mtmv.getId(), "ivm_dropped_db_stream_base");
+        Assertions.assertNotNull(db.getTableNullable(streamName));
+
+        Map<String, String> properties = new HashMap<>();
+        properties.put(PropertyAnalyzer.PROPERTIES_EXCLUDED_TRIGGER_TABLES, "ivm_dropped_db_stream_base");
+        AlterMTMV alter = new AlterMTMV(
+                new TableNameInfo("test", "ivm_dropped_db_stream_mv"), MTMVAlterOpType.ALTER_PROPERTY);
+        alter.setMvProperties(properties);
+
+        db.markDropped();
+        try {
+            Env.getCurrentEnv().getAlterInstance().processAlterMTMV(alter, false);
+        } finally {
+            db.unmarkDropped();
+        }
+
+        Assertions.assertTrue(mtmv.getExcludedTriggerTables().isEmpty(),
+                "ALTER should not update properties after failing to lock a dropped database");
+        Assertions.assertNotNull(db.getTableNullable(streamName),
+                "ALTER should not drop streams after failing to lock a dropped database");
+    }
+
+    @Test
     public void testCreateNonIncrementalMvDoesNotCreateStream() throws Exception {
         createTable("create table test.ivm_no_stream_base (k1 int, v1 int)\n"
                 + "unique key(k1)\n"

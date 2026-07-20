@@ -1420,9 +1420,7 @@ public class Alter {
         if (hasNewlyIncludedBaseTable) {
             mtmv.markIvmBinlogBroken();
         }
-        if (!db.writeLockIfExist()) {
-            return;
-        }
+        db.writeLockOrDdlException();
         try {
             for (BaseTableInfo baseTableInfo : baseTables) {
                 TableNameInfo baseTableName = new TableNameInfo(baseTableInfo.getCtlName(),
