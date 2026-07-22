@@ -63,6 +63,16 @@ suite("test_ivm_replace_stream_cleanup") {
         AS SELECT k1, v1 FROM ivm_replace_new_base
     """
 
+    sql "INSERT INTO ivm_replace_old_base VALUES (1, 10), (2, 20)"
+    sql "REFRESH MATERIALIZED VIEW ivm_replace_old_mv INCREMENTAL"
+    waitingMTMVTaskFinishedByMvName("ivm_replace_old_mv")
+    order_qt_old_mv_before_replace "SELECT k1, v1 FROM ivm_replace_old_mv ORDER BY k1"
+
+    sql "INSERT INTO ivm_replace_new_base VALUES (10, 100)"
+    sql "REFRESH MATERIALIZED VIEW ivm_replace_new_mv INCREMENTAL"
+    waitingMTMVTaskFinishedByMvName("ivm_replace_new_mv")
+    order_qt_new_mv_before_replace "SELECT k1, v1 FROM ivm_replace_new_mv ORDER BY k1"
+
     qt_streams_before_replace """
         SELECT
             COUNT(DISTINCT CASE WHEN RIGHT(STREAM_NAME,
@@ -92,4 +102,9 @@ suite("test_ivm_replace_stream_cleanup") {
         FROM information_schema.table_stream_consumption
         WHERE DB_NAME = '${context.dbName}'
     """
+
+    sql "INSERT INTO ivm_replace_new_base VALUES (20, 200)"
+    sql "REFRESH MATERIALIZED VIEW ivm_replace_old_mv INCREMENTAL"
+    waitingMTMVTaskFinishedByMvName("ivm_replace_old_mv")
+    order_qt_mv_after_replace "SELECT k1, v1 FROM ivm_replace_old_mv ORDER BY k1"
 }
