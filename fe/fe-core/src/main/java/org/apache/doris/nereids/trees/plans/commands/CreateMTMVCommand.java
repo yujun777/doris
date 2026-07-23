@@ -150,8 +150,7 @@ public class CreateMTMVCommand extends Command implements ForwardWithSync {
         String streamName = IvmUtil.streamName(mvId, baseTableFullQualifiers);
         TableNameInfo streamTableName = new TableNameInfo(
                 InternalCatalog.INTERNAL_CATALOG_NAME, mvDbName, streamName);
-        TableNameInfo baseTableName = new TableNameInfo(
-                baseTableFullQualifiers.get(0), baseTableFullQualifiers.get(1), baseTableFullQualifiers.get(2));
+        TableNameInfo baseTableName = new TableNameInfo(baseTableFullQualifiers);
         // Drop old stream if exists, so validation always runs on the fresh stream
         TableIf oldStream = mvDb.getTableNullable(streamName);
         if (oldStream != null) {
