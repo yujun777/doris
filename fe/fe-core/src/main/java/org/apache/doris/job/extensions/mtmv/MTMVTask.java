@@ -108,6 +108,8 @@ public class MTMVTask extends AbstractTask {
     public static final int DEFAULT_REFRESH_PARTITION_NUM = 1;
     public static final String DEBUG_POINT_SKIP_PARTITION_SYNC =
             "MTMVTask.syncPartitionsIfNeeded.skip";
+    public static final String DEBUG_POINT_SKIP_PARTITION_SYNC_FILTER =
+            "MTMVTask.syncPartitionsIfNeeded.skip.filter";
 
     public static final ImmutableList<Column> SCHEMA = ImmutableList.of(
             new Column("TaskId", ScalarType.createStringType()),
@@ -354,7 +356,7 @@ public class MTMVTask extends AbstractTask {
 
     private void syncPartitionsIfNeeded(ConnectContext ctx, List<TableIf> tableIfs)
             throws JobException, AnalysisException, DdlException, PartitionPlanningException {
-        if (DebugPointUtil.isEnable(DEBUG_POINT_SKIP_PARTITION_SYNC)) {
+        if (isSkipPartitionSyncDebugPointEnabled()) {
             LOG.info("Skip MTMV partition synchronization for debug point, mv={}, taskId={}",
                     mtmv.getName(), getTaskId());
             return;
@@ -391,6 +393,13 @@ public class MTMVTask extends AbstractTask {
                 MTMVPartitionUtil.addPartition(mtmv, partitionKeyDesc);
             }
         }
+    }
+
+    private boolean isSkipPartitionSyncDebugPointEnabled() {
+        String targetMvName = DebugPointUtil.getDebugParamOrDefault(
+                DEBUG_POINT_SKIP_PARTITION_SYNC_FILTER, "mv_name", "");
+        return mtmv.getName().equals(targetMvName)
+                && DebugPointUtil.isEnable(DEBUG_POINT_SKIP_PARTITION_SYNC);
     }
 
     private RefreshRequest resolveRefreshRequest() throws JobException {
