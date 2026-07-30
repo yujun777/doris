@@ -77,7 +77,6 @@ import org.apache.doris.nereids.trees.plans.logical.LogicalOneRowRelation;
 import org.apache.doris.nereids.trees.plans.logical.LogicalPlan;
 import org.apache.doris.nereids.trees.plans.logical.LogicalSink;
 import org.apache.doris.nereids.types.AggStateType;
-import org.apache.doris.nereids.types.BigIntType;
 import org.apache.doris.nereids.types.CharType;
 import org.apache.doris.nereids.types.DataType;
 import org.apache.doris.nereids.types.DecimalV2Type;
@@ -605,10 +604,6 @@ public class MTMVPlanUtil {
             Optional<IvmRewriteResult> ivmRewriteResult = planner.getCascadesContext().getIvmRewriteResult();
             keys = analyzeKeys(keys, properties, columns, isIvm, mvPartitionInfo, distribution,
                     ivmRewriteResult.orElse(null));
-            if (isIvm) {
-                properties.put(PropertyAnalyzer.PROPERTIES_FUNCTION_COLUMN + "."
-                        + PropertyAnalyzer.PROPERTIES_SEQUENCE_TYPE, "BIGINT");
-            }
             properties = CreateTableInfo.addOlapHiddenColumns(
                     columns, isIvm ? KeysType.UNIQUE_KEYS : KeysType.DUP_KEYS,
                     isIvm, properties, false);
@@ -1030,7 +1025,8 @@ public class MTMVPlanUtil {
                 .collect(Collectors.toList());
         if (mtmv.isIvm()) {
             analyzedColumns.add(ColumnDefinition.newSequenceColumnDefinition(
-                    BigIntType.INSTANCE, AggregateType.NONE).translateToCatalogStyle());
+                    DataType.fromCatalogType(mtmv.getColumn(Column.SEQUENCE_COL).getType()),
+                    AggregateType.NONE).translateToCatalogStyle());
         }
         return analyzedColumns;
     }
