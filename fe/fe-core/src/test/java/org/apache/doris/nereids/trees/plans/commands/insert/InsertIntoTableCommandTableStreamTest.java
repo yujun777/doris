@@ -668,15 +668,14 @@ public class InsertIntoTableCommandTableStreamTest extends TestWithFeService {
                             .build();
                 }).thenAnswer(invocation -> buildReadStateResponse(invocation.getArgument(0)));
 
-                ResolveCloudTableStreamReadState resolver = new ResolveCloudTableStreamReadState();
                 org.apache.doris.nereids.exceptions.AnalysisException exception = Assertions.assertThrows(
                         org.apache.doris.nereids.exceptions.AnalysisException.class,
-                        () -> resolver.rewriteRoot(analyzedPlan, null));
+                        () -> Deencapsulation.invoke(CloudTableStreamReadStateHook.class, "resolve", analyzedPlan));
                 Assertions.assertTrue(exception.getMessage()
                         .contains("did not return all Cloud Table Stream bindings"));
                 Assertions.assertTrue(wrappers.stream().noneMatch(OlapTableStreamWrapper::hasCloudReadStates));
 
-                resolver.rewriteRoot(analyzedPlan, null);
+                Deencapsulation.invoke(CloudTableStreamReadStateHook.class, "resolve", analyzedPlan);
                 Assertions.assertTrue(wrappers.stream().allMatch(OlapTableStreamWrapper::hasCloudReadStates));
                 ArgumentCaptor<Cloud.GetTableStreamOffsetRequest> requestCaptor =
                         ArgumentCaptor.forClass(Cloud.GetTableStreamOffsetRequest.class);
