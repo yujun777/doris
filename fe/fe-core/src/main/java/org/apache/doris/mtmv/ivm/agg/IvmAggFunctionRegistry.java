@@ -64,7 +64,9 @@ public class IvmAggFunctionRegistry {
                 new IvmAggMinProcessor(),
                 new IvmAggMaxProcessor(),
                 new IvmAggBitmapUnionProcessor(),
-                new IvmAggBitmapUnionCountProcessor());
+                new IvmAggBitmapUnionCountProcessor(),
+                new IvmAggArrayAggProcessor(),
+                new IvmAggCollectListProcessor());
         processorByKind = new EnumMap<>(IvmAggFunctionKind.class);
         for (IvmAggFunctionProcessor processor : processors) {
             processorByKind.put(processor.handledFunctionKind(), processor);
